@@ -1,0 +1,23 @@
+name: Publish to install gist
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: publish-gist
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test
+      - run: node scripts/publish-gist.mjs
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}

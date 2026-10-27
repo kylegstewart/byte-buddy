@@ -4,15 +4,11 @@ Personal, dependency-free canvas extension combining IT-ticket progress with ver
 
 ## Install and update
 
-Install by cloning into your Copilot extensions folder, then restart Copilot:
+Install from the Copilot app (**Install extension from gist**) using the install gist, then restart Copilot. Installs and updates come from that gist; the repo is the source of truth.
 
-```
-git clone https://github.com/kylegstewart/byte-buddy "$HOME/.copilot/extensions/dev-buddy"
-```
+Byte Buddy checks the gist for a newer `version.json` when it opens and every 6 hours; **Settings → Check for updates** forces a check. A banner offers **Install update**, which replaces only code and UI files in place. `artifacts/` (your save) is never touched. Restart Copilot afterwards. Agents can use the `check_for_updates` and `install_update` (requires `confirm: true`) actions.
 
-Updates are published as GitHub releases (tag `vX.Y.Z`, and `version.json` must match the tag). Byte Buddy checks for a newer release on open and every 6 hours; **Settings → Check for updates** forces a check. A banner offers **Install update**, which downloads the release and replaces only code and UI files in place. `artifacts/` (your save) is never touched. Restart Copilot afterwards. Agents can use the `check_for_updates` and `install_update` (requires `confirm: true`) actions.
-
-To publish: bump `version.json`, commit, push, then `gh release create vX.Y.Z --generate-notes`.
+To publish: bump `version.json`, commit, and push to `main`. The **Publish to install gist** workflow runs the tests and updates the gist (tests are not published). Pushes that do not bump the version publish nothing. One-time setup: add a repository secret `GIST_TOKEN` containing a personal access token with the `gist` scope.
 
 ## Connections
 
