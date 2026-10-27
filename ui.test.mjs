@@ -542,8 +542,8 @@ test("five species and stage previews share wallet controls without repeated DOM
     assert.equal((ui.nodes.get("buddyTypes").innerHTML.match(/data-buddy=/g) || []).length, 5);
     assert.equal((ui.nodes.get("evoTrack").innerHTML.match(/<svg /g) || []).length, 5);
     assert.match(ui.nodes.get("evoWallet").textContent, /20,000 evolution credits/);
-    assert.equal(ui.nodes.get("evoUpgrade").disabled, false);
-    assert.equal(ui.nodes.get("evoReset").disabled, true);
+    assert.match(ui.nodes.get("evoTrack").innerHTML, /evo future next affordable/);
+    assert.match(ui.nodes.get("evoTrack").innerHTML, /data-evo-action="upgrade"[^>]*aria-disabled="false"/);
     const writes = ui.nodes.get("evoTrack").writes;
     ui.run("renderEvolution()");
     assert.equal(ui.nodes.get("evoTrack").writes, writes);
@@ -552,7 +552,8 @@ test("five species and stage previews share wallet controls without repeated DOM
     assert.match(ui.nodes.get("evoTrack").innerHTML, /Moon Cat/);
     assert.equal((ui.nodes.get("evoTrack").innerHTML.match(/>Owned</g) || []).length, 3);
     assert.match(ui.nodes.get("evoWallet").textContent, /100 XP deficit/);
-    assert.equal(ui.nodes.get("evoUpgrade").disabled, true);
+    assert.match(ui.nodes.get("evoTrack").innerHTML, /evo future next"/);
+    assert.match(ui.nodes.get("evoTrack").innerHTML, /data-evo-action="upgrade"[^>]*aria-disabled="true"/);
     assert.match(ui.nodes.get("evoReset").textContent, /refund 20,000/);
 });
 
@@ -605,6 +606,20 @@ test("reset requires confirmation, supports cancellation and rejects stale modes
     assert.match(html, /<dialog id="evoConfirm"[^>]*aria-labelledby="evoConfirmTitle"/);
 });
 
+test("evolving is blocked while an evolution animation or celebration is in progress", () => {
+    const ui = evolutionFixture();
+    ui.run('window.calls = 0; api = async () => { window.calls++; return {result:{}}; }; loadState = async () => {};');
+    for (const lock of ['evolution = {event:{id:"e"},from:1,to:2,t:0,stage:1,done(){}}', 'evolutionModalOpen = true', 'modalQueue.push({type:"evolution",id:"q"})']) {
+        ui.run(lock + "; renderEvolution()");
+        assert.match(ui.nodes.get("evoTrack").innerHTML, /data-evo-action="upgrade"[^>]*aria-disabled="true"/);
+        ui.run('changeEvolution("upgrade")');
+        assert.equal(ui.run("window.calls"), 0);
+        ui.run("evolution = null; evolutionModalOpen = false; modalQueue.length = 0");
+    }
+    ui.run("renderEvolution()");
+    assert.match(ui.nodes.get("evoTrack").innerHTML, /data-evo-action="upgrade"[^>]*aria-disabled="false"/);
+});
+
 test("pending purchase coalesces clicks and sends only validated server-owned pricing inputs", async () => {
     const ui = evolutionFixture();
     ui.run('window.requests = []; api = async (path, body) => { window.requests.push({path,body}); await new Promise(resolve => {window.finish = resolve}); return {result:{}} }; loadState = async () => {};');
@@ -615,9 +630,8 @@ test("pending purchase coalesces clicks and sends only validated server-owned pr
     assert.equal(ui.run("window.requests[0].body.type"), "cat");
     assert.equal(ui.run("window.requests[0].body.revision"), 0);
     assert.equal(ui.run("window.requests[0].body.mode"), "live");
-    assert.equal(ui.nodes.get("evoUpgrade").disabled, true);
+    assert.match(ui.nodes.get("evoTrack").innerHTML, /data-evo-action="upgrade"[^>]*aria-disabled="true"/);
     ui.run("window.finish()"); await purchase;
-    assert.equal(ui.run("evolutionPending"), false);
     assert.match(ui.nodes.get("evoStatus").textContent, /Evolution purchased/);
 });
 

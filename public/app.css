@@ -159,7 +159,7 @@ button { font: inherit; color: inherit; }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--db-border); background: var(--db-surface); cursor: pointer; font-weight: 500; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--db-surface-2); }
-.btn:disabled { opacity: .55; cursor: progress; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn-primary { background: var(--db-accent); border-color: transparent; color: #fff; }
 .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--db-accent) 85%, #000); }
 .btn-ghost { background: transparent; }
@@ -211,6 +211,12 @@ button { font: inherit; color: inherit; }
 .evo svg { width: 100%; max-width: 64px; height: 60px; }
 .evo.current { border-color: var(--db-accent); background: var(--db-accent-muted); }
 .evo.future svg { opacity: .5; }
+.evo.next { border-style: dashed; border-color: var(--db-accent); }
+.evo.next[aria-disabled="true"] { cursor: not-allowed; }
+.evo.next.affordable { cursor: pointer; border-style: solid; border-color: #56d364; background: color-mix(in srgb, #56d364 22%, transparent); box-shadow: 0 0 0 2px #56d364; }
+.evo.next.affordable svg, .evo.next.affordable .muted { opacity: 1; color: var(--db-green); font-weight: 700; }
+.evo.next.affordable:hover { filter: brightness(1.08); }
+.evo.next:focus-visible { outline: 2px solid var(--db-accent); outline-offset: 2px; }
 .evo strong { font-size: 11px; }
 .evo-wallet { color: var(--db-accent); font-size: 18px; font-weight: 700; }
 .buddy-types, .evo-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }

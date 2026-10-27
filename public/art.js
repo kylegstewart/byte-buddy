@@ -233,6 +233,47 @@ export function buddy(opts = {}) {
     return type === "robot" ? robot(opts) : creature({ ...opts, stage: buddyStage(opts.stage), type });
 }
 
+const EVO_ACCENT = [null, "#56d364", "#58a6ff", "#bc8cff", "#f2c94c"];
+
+// Every stage after the first gains a coloured accent set so stages differ by more than size.
+function evolutionRegalia(type, stage, { s, bx, by, hx, hy }) {
+    let back = "", front = "";
+    if (stage < 2) return { back, front };
+    const c = EVO_ACCENT[stage - 1], cd = shade(c, -0.45), cl = shade(c, 0.45);
+    const cx = Math.floor(s.hw / 2);
+    if (stage === 4) {
+        back += `<g opacity=".32">${oval(bx - 8, by - 12, s.bw + 16, s.bh + 14, c)}</g>`;
+        for (let i = -2; i <= 2; i++) back += rect(i * 7 - 1, by - 8 - (3 - Math.abs(i)) * 3, 3, 8 + (3 - Math.abs(i)) * 3, c);
+    }
+    if (stage === 5) {
+        back += `<g opacity=".28">${        oval(bx - 14, by - 18, s.bw + 28, s.bh + 16, c)}</g>`
+                    + `<g opacity=".4">${oval(bx - 8, by - 12, s.bw + 16, s.bh + 14, c)}</g>`;
+    }
+    if (type !== "slime") {
+        front += rect(-cx + 2, by - 1, s.hw - 4, 3, cd) + rect(-cx + 3, by - 1, s.hw - 6, 2, c);
+        if (stage === 2) front += rect(-1, by + 2, 3, 3, cl);
+    }
+    if (stage >= 3) {
+        const py = type === "slime" ? by + 1 : by;
+        for (const x of [bx - 3, -bx - 3]) {
+            front += box(x, py, 6, 5, 1, cd) + rect(x + 1, py + 1, 4, 3, c);
+            if (stage >= 4) front += rect(x + 2, py - 4, 2, 4, cl);
+        }
+        const ey = by + Math.floor(s.bh / 2) - 1;
+        front += rect(-1, ey - 2, 3, 7, cd) + rect(-3, ey, 7, 3, cd) + rect(-1, ey - 1, 3, 5, c) + rect(-2, ey + 1, 5, 1, c);
+    }
+    if (stage === 4) {
+        front += rect(-8, hy - 11, 2, 5, c) + rect(-1, hy - 14, 3, 8, c) + rect(6, hy - 11, 2, 5, c)
+            + rect(-8, hy - 7, 16, 2, cd) + rect(-7, hy - 7, 14, 1, cl);
+    }
+    if (stage === 5) {
+        front += rect(-9, hy - 13, 18, 1, c) + rect(-11, hy - 12, 3, 3, c) + rect(8, hy - 12, 3, 3, c)
+            + rect(-9, hy - 9, 18, 1, c) + rect(-10, hy - 11, 1, 2, cl) + rect(9, hy - 11, 1, 2, cl)
+            + sparkle(-bx + 6, by - 4, cl) + sparkle(bx - 8, by - 2, cl) + sparkle(0, hy - 17, "#ffffff");
+    }
+    return { back, front };
+}
+
 function creature(opts) {
     const { type, stage, variant } = opts;
     const s = creatureSize(type, stage, variant);
@@ -248,6 +289,8 @@ function creature(opts) {
     const ctx = { ...opts, s, body, eye, dark, light, frame, pose, by, hy, hx, bx, wag };
     const out = [];
     if (opts.neck === "neck-cape") out.push(capeBack(bx, by, s, frame, opts.still));
+    const regalia = evolutionRegalia(type, stage, { s, bx, by, hx, hy });
+    out.push(regalia.back);
     if (type === "cat") out.push(catBack(ctx));
     if (type === "dog") out.push(dogBack(ctx));
     if (type === "dragon") out.push(dragonBack(ctx));
@@ -315,6 +358,7 @@ function creature(opts) {
             rect(hx - 2, my + 2, 4, 1, dark), rect(hx + s.hw - 2, my + 2, 4, 1, dark));
         if (type === "dog" && ["happy", "excited", "chomp"].includes(opts.expr)) out.push(box(0, my + 2, 3, 3, 1, "#ff8fb1"));
     }
+    out.push(regalia.front);
     if (opts.glasses) out.push(glasses(opts.glasses, face, sx, sw, eye));
     if (opts.headphones) out.push(headphonesFront(opts.headphones, hx, hy, s));
     if (opts.hat) out.push(hat(opts.hat, hx, hy, s, frame, opts.still));

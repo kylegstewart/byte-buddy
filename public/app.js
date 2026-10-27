@@ -144,6 +144,7 @@ async function loadState() {
             if (evolution) {
                 if (pendingEvolutionIds.has(evolution.event.id)) modalQueue.unshift(evolution.event);
                 modalOpen = false;
+                evolutionModalOpen = false;
                 evolution = null;
             }
         }
@@ -497,30 +498,35 @@ function renderProgress() {
 }
 
 let evolutionPending = false;
+let evolutionModalOpen = false;
+const evolutionLocked = () => evolutionPending || Boolean(evolution) || evolutionModalOpen || modalQueue.some((c) => c.type === "evolution");
 let evolutionReset = null;
 function renderEvolution() {
     const e = state.evolution;
     if (!e) return;
     $("evoWallet").textContent = `${fmt(e.available)} evolution credits${e.deficit ? ` · ${fmt(e.deficit)} XP deficit to cover` : ""}`;
     $("evoCreditNote").textContent = `Credits are shared by every buddy. Spending never lowers your level.${e.legacyCredit ? ` Includes ${fmt(e.legacyCredit)} credits for your previous robot evolution.` : ""}`;
-    setHtml($("buddyTypes"), e.types.map((type) => `<button type="button" class="btn btn-sm" data-evo-action="switch" data-buddy="${type.id}" aria-pressed="${type.id === e.active}" ${evolutionPending ? "disabled" : ""}>${esc(type.name)}</button>`).join(""));
+    setHtml($("buddyTypes"), e.types.map((type) => `<button type="button" class="btn btn-sm" data-evo-action="switch" data-buddy="${type.id}" aria-pressed="${type.id === e.active}" ${evolutionLocked() ? "disabled" : ""}>${esc(type.name)}</button>`).join(""));
     const line = e.buddies[e.active];
     const type = e.types.find((type) => type.id === e.active);
     setHtml($("evoTrack"), type.stages.map(({ name, stage, cost }) => {
         const owned = stage <= line.owned;
-        const cls = stage === line.selected ? "current" : owned ? "past" : "future";
+        const isNext = stage === line.owned + 1;
+        const affordable = isNext && e.balance >= cost;
+        const cls = stage === line.selected ? "current" : owned ? "past" : `future${isNext ? " next" : ""}${affordable ? " affordable" : ""}`;
+        const label = owned ? "Owned" : affordable ? `Buy · ${fmt(cost)} credits` : isNext ? `Next · ${fmt(cost)} credits` : `${fmt(cost)} credits`;
+        const buy = isNext ? ` data-evo-action="upgrade" role="button" tabindex="0" aria-disabled="${!affordable || evolutionLocked()}" aria-label="${affordable ? `Buy ${esc(name)} for ${fmt(cost)} credits` : `${esc(name)}: next evolution, ${fmt(Math.max(0, cost - e.balance))} more credits needed`}"` : "";
         const opts = robotOpts({ stage, expr: "smile", still: true, hat: null, glasses: null, headphones: null, neck: null });
-        return `<li class="evo ${cls}" aria-current="${stage === line.selected ? "step" : "false"}"><svg viewBox="${robotViewBox(5, opts.variant)}" shape-rendering="crispEdges" aria-hidden="true">${robot(opts)}</svg><strong>${esc(name)}</strong><span class="muted">${owned ? "Owned" : `${fmt(cost)} credits`}</span><button type="button" class="btn btn-sm" data-evo-action="select" data-stage="${stage}" ${!owned || evolutionPending || stage === line.selected ? "disabled" : ""} aria-label="Display ${esc(name)}">${stage === line.selected ? "Active" : "Display"}</button></li>`;
+        const display = owned ? `<button type="button" class="btn btn-sm" data-evo-action="select" data-stage="${stage}" ${evolutionLocked() || stage === line.selected ? "disabled" : ""} aria-label="Display ${esc(name)}">${stage === line.selected ? "Active" : "Display"}</button>` : "";
+        return `<li class="evo ${cls}" aria-current="${stage === line.selected ? "step" : "false"}"${buy}><svg viewBox="${robotViewBox(5, opts.variant)}" shape-rendering="crispEdges" aria-hidden="true">${robot(opts)}</svg><strong>${esc(name)}</strong><span class="muted">${label}</span>${display}</li>`;
     }).join(""));
-    $("evoNext").textContent = e.nextCost === null ? "This buddy's evolution line is fully owned. Switch freely or display an earlier stage." : `Next: ${type.stages[line.owned].name} · ${fmt(e.nextCost)} credits. No level requirement.`;
-    $("evoUpgrade").disabled = evolutionPending || e.nextCost === null || e.balance < e.nextCost;
-    $("evoUpgrade").textContent = e.nextCost === null ? "Fully evolved" : `Upgrade · ${fmt(e.nextCost)} credits`;
-    $("evoReset").disabled = evolutionPending || !e.spent;
+    $("evoNext").textContent = e.nextCost === null ? "This buddy's evolution line is fully owned. Switch freely or display an earlier stage." : `Next: ${type.stages[line.owned].name} · ${fmt(e.nextCost)} credits. ${e.balance >= e.nextCost ? "Click its card to buy it." : `Need ${fmt(e.nextCost - e.balance)} more credits.`}`;
+    $("evoReset").disabled = evolutionLocked() || !e.spent;
     $("evoReset").textContent = `Reset all evolutions · refund ${fmt(e.spent)} credits`;
 }
 
 async function changeEvolution(action, type = state.evolution.active, stage) {
-    if (evolutionPending) return;
+    if (evolutionLocked()) return;
     const snapshot = { revision: state.evolution.revision, mode: state.mode };
     evolutionPending = true;
     renderEvolution();
@@ -1021,6 +1027,13 @@ let frame = 0;
 let action = null;
 let particles = [];
 let evolution = null;
+// Each stage gets a longer, bigger sequence: flicker, charge, flash, then shockwaves.
+const EVO_FX = {
+    2: { dur: 44, flashAt: 30, flash: 0.85, burst: 14, rise: 0, color: "#ffd23f", rings: [0] },
+    3: { dur: 62, flashAt: 44, flash: 0.9, burst: 20, rise: 0, color: "#7dd3fc", rings: [0, 5] },
+    4: { dur: 78, flashAt: 56, flash: 0.95, burst: 28, rise: 10, color: "#c4a1ff", rings: [0, 5, 10] },
+    5: { dur: 100, flashAt: 72, flash: 1, burst: 40, rise: 16, color: "#ff9ff3", rings: [0, 4, 8, 12] },
+};
 const petMotion = createPetMotion({
     reduced: reducedMotion,
     onPet: () => post("/api/interact", { action: state?.care.sleeping ? "wake" : "pet" }),
@@ -1192,14 +1205,40 @@ function tick() {
         expr = motion.phase === "flying" ? "excited" : "curious";
         actor.look = 0;
     } else if (evolution) {
-        evolution.t++;
-        const t = evolution.t;
-        evolution.stage = t < 30 && t % 6 < 3 ? evolution.from : evolution.to;
+        const fx = EVO_FX[evolution.to] || EVO_FX[2];
+        const t = ++evolution.t;
+        const cx = Math.round(actor.x), cy = FLOOR_Y + Math.round(m.headTop / 2);
+        const period = t < fx.flashAt / 2 ? 6 : 4;
+        evolution.stage = t < fx.flashAt && t % period < period / 2 ? evolution.from : evolution.to;
         expr = "excited";
-        if (t % 5 === 0 && t < 30) burst(actor.x, headY + 10, 4);
-        if (t === 30) { $("flash").setAttribute("opacity", "0.85"); burst(actor.x, headY + 8, 14); }
-        if (t === 33) $("flash").setAttribute("opacity", "0");
-        if (t >= 44) { const done = evolution.done; evolution = null; done(); }
+        if (evolution.to >= 4) jump = -Math.round(fx.rise * (t < fx.flashAt ? Math.min(1, t / fx.flashAt) : Math.max(0, 1 - (t - fx.flashAt) / 12)));
+        if (t < fx.flashAt) {
+            if (t % 5 === 0) burst(actor.x, headY + 10, 4);
+            if (evolution.to >= 3 && t % 2 === 0) {
+                for (let i = 0; i < evolution.to - 1; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    particles.push({ kind: "spark", x: actor.x + Math.cos(angle) * 44, y: cy + Math.sin(angle) * 30, vx: -Math.cos(angle) * 3.1, vy: -Math.sin(angle) * 2.1, life: 14, max: 14, color: i % 2 ? fx.color : "#ffffff" });
+                }
+                const r = 34 * (1 - (t % 18) / 18);
+                fxSvg.push(`<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${fx.color}" stroke-width="2" opacity="${(0.9 - r / 50).toFixed(2)}"/>`);
+            }
+            if (evolution.to >= 4) {
+                const w = 4 + 12 * Math.min(1, t / fx.flashAt);
+                fxSvg.push(`<rect x="${cx - w / 2}" y="0" width="${w}" height="${FLOOR_Y}" fill="${fx.color}" opacity="0.28"/><rect x="${cx - w / 4}" y="0" width="${w / 2}" height="${FLOOR_Y}" fill="#ffffff" opacity="0.5"/>`);
+            }
+        }
+        if (t === fx.flashAt) { $("flash").setAttribute("opacity", String(fx.flash)); burst(actor.x, headY + 8, fx.burst); }
+        if (t > fx.flashAt) {
+            const since = t - fx.flashAt;
+            $("flash").setAttribute("opacity", String(Math.max(0, fx.flash - since * 0.1).toFixed(2)));
+            for (const delay of fx.rings) {
+                const r = (since - delay) * 4;
+                if (r > 0 && r < 56) fxSvg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${fx.color}" stroke-width="3" opacity="${(1 - r / 56).toFixed(2)}"/>`);
+            }
+            if (evolution.to === 5 && since < 14 && since % 3 === 0) burst(actor.x, headY + 8, 12);
+            if (evolution.to >= 4 && since < 10) fxSvg.push(`<rect x="${cx - 8 + since}" y="0" width="${16 - since * 2}" height="${FLOOR_Y}" fill="#ffffff" opacity="${(0.5 - since * 0.05).toFixed(2)}"/>`);
+        }
+        if (t >= fx.dur) { $("flash").setAttribute("opacity", "0"); const done = evolution.done; evolution = null; done(); }
     } else if (action) {
         const t = action.t++;
         switch (action.type) {
@@ -1345,6 +1384,7 @@ function processCelebrations() {
     }
     if (quickAck.length) api("/api/ack", { ids: quickAck }).catch(() => {});
     if (!modalOpen) showNextModal();
+    if (state.evolution) renderEvolution();
 }
 
 function showNextModal() {
@@ -1353,6 +1393,7 @@ function showNextModal() {
     if (!c) return;
     modalOpen = true;
     const open = () => openModal(c);
+    if (c.type === "evolution") evolutionModalOpen = true;
     if (c.type === "evolution" && c.buddyType === state.evolution?.active && c.stageTo === state.progress.stage && !reducedMotion()) {
         petMotion.reset();
         evolution = { event: c, from: c.stageFrom, to: c.stageTo, t: 0, stage: c.stageFrom, done: open };
@@ -1408,8 +1449,10 @@ function openModal(c) {
     $("celOk").onclick = () => {
         $("celebration").hidden = true;
         modalOpen = false;
+        if (c.type === "evolution") evolutionModalOpen = false;
         api("/api/ack", { ids: [c.id] }).catch(() => {});
         showNextModal();
+        if (state?.evolution) renderEvolution();
     };
 }
 
@@ -1468,9 +1511,14 @@ function wire() {
     });
     $("evoTrack").addEventListener("click", (event) => {
         const button = event.target.closest("[data-evo-action]");
-        if (button && !button.disabled) changeEvolution("select", state.evolution.active, Number(button.dataset.stage));
+        if (!button || button.disabled || button.getAttribute("aria-disabled") === "true") return;
+        if (button.dataset.evoAction === "upgrade") changeEvolution("upgrade");
+        else changeEvolution("select", state.evolution.active, Number(button.dataset.stage));
     });
-    $("evoUpgrade").addEventListener("click", () => changeEvolution("upgrade"));
+    $("evoTrack").addEventListener("keydown", (event) => {
+        const card = event.target.closest('[data-evo-action="upgrade"]');
+        if (card && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); card.click(); }
+    });
     $("evoReset").addEventListener("click", () => {
         evolutionReset = { revision: state.evolution.revision, mode: state.mode };
         $("evoConfirmText").textContent = `Return every buddy to stage 1 and refund ${fmt(state.evolution.spent)} credits to the shared wallet? Your level, XP, cosmetics and legacy credit are kept.`;
