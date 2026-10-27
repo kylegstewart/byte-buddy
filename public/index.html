@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Byte Buddy</title>
+<link rel="stylesheet" href="/static/app.css">
+<script>window.BUDDY_CONFIG = /*__BUDDY_CONFIG__*/null;</script>
+<script type="module" src="/static/app.js"></script>
+</head>
+<body>
+<div id="app" class="app" aria-busy="true">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><rect x="4" y="0" width="2" height="2" fill="#7cf8ff"/><rect x="1" y="2" width="8" height="6" fill="#3fb8af"/><rect x="2" y="3" width="6" height="3" fill="#141b27"/><rect x="3" y="4" width="1" height="1" fill="#7cf8ff"/><rect x="6" y="4" width="1" height="1" fill="#7cf8ff"/><rect x="3" y="8" width="1" height="2" fill="#2a3140"/><rect x="6" y="8" width="1" height="2" fill="#2a3140"/></svg>
+      <span class="brand-name">Byte Buddy</span>
+      <span id="demoPill" class="pill pill-demo" hidden>DEMO</span>
+    </div>
+    <div class="top-actions">
+      <button id="settingsBtn" class="icon-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings" title="Settings">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.437-.272.668-.386.133-.066.194-.158.211-.224l.29-1.106C6.009.645 6.556.095 7.299.03 7.53.01 7.764 0 8 0Zm-.571 1.525c-.036.003-.108.036-.137.146l-.289 1.105c-.147.561-.549.967-.998 1.189-.173.086-.34.183-.5.29-.417.278-.97.423-1.529.27l-1.103-.303c-.109-.03-.175.016-.195.045-.22.312-.412.644-.573.99-.014.031-.021.11.059.19l.815.806c.411.406.562.957.53 1.456a4.709 4.709 0 0 0 0 .582c.032.499-.119 1.05-.53 1.456l-.815.806c-.081.08-.073.159-.059.19.162.346.353.677.573.989.02.03.085.076.195.046l1.102-.303c.56-.153 1.113-.008 1.53.27.161.107.328.204.501.29.447.222.85.629.997 1.189l.289 1.105c.029.109.101.143.137.146a6.6 6.6 0 0 0 1.142 0c.036-.003.108-.036.137-.146l.289-1.105c.147-.561.549-.967.998-1.189.173-.086.34-.183.5-.29.417-.278.97-.423 1.529-.27l1.103.303c.109.029.175-.016.195-.045.22-.313.411-.644.573-.99.014-.031.021-.11-.059-.19l-.815-.806c-.411-.406-.562-.957-.53-1.456a4.709 4.709 0 0 0 0-.582c-.032-.499.119-1.05.53-1.456l.815-.806c.081-.08.073-.159.059-.19a6.464 6.464 0 0 0-.573-.989c-.02-.03-.085-.076-.195-.046l-1.102.303c-.56.153-1.113.008-1.53-.27a4.44 4.44 0 0 0-.501-.29c-.447-.222-.85-.629-.997-1.189l-.289-1.105c-.029-.11-.101-.143-.137-.146a6.6 6.6 0 0 0-1.142 0ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9.5 8a1.5 1.5 0 1 0-3.001.001A1.5 1.5 0 0 0 9.5 8Z"/></svg>
+      </button>
+    </div>
+    <div id="settings" class="popover" role="dialog" aria-label="Settings" hidden>
+      <div class="pop-row">
+        <label class="switch"><input id="demoToggle" type="checkbox"><span class="track" aria-hidden="true"></span><span>Demo mode</span></label>
+        <p class="hint">Simulated tickets, kept separate from your real progress.</p>
+      </div>
+      <div class="pop-row">
+        <span class="pop-label" id="todLabel">Time of day</span>
+        <div class="seg" role="radiogroup" aria-labelledby="todLabel" data-pref="timeOfDay">
+          <button type="button" role="radio" data-value="auto">Auto</button><button type="button" role="radio" data-value="day">Day</button><button type="button" role="radio" data-value="night">Night</button>
+        </div>
+      </div>
+      <div class="pop-row">
+        <span class="pop-label" id="motionLabel">Animation</span>
+        <div class="seg" role="radiogroup" aria-labelledby="motionLabel" data-pref="motion">
+          <button type="button" role="radio" data-value="system">System</button><button type="button" role="radio" data-value="reduced">Reduced</button><button type="button" role="radio" data-value="full">Full</button>
+        </div>
+      </div>
+      <div class="pop-row">
+        <span class="pop-label">Ticket sync</span>
+        <p id="syncDetails" class="hint"></p>
+      </div>
+      <div class="pop-row">
+        <span class="pop-label">Updates</span>
+        <p id="updateDetails" class="hint"></p>
+        <button id="checkUpdates" type="button" class="btn btn-sm">Check for updates</button>
+      </div>
+    </div>
+  </header>
+
+  <aside id="updateNotice" class="connections-notice" role="status" hidden>
+    <p id="updateNoticeText"></p>
+    <button id="installUpdate" type="button" class="btn btn-sm">Install update</button>
+  </aside>
+  <aside id="connectionsNotice" class="connections-notice" hidden>
+    <p id="connectionsNoticeText">GitHub imports are paused. Choose GitHub organizations or repositories to resume.</p>
+    <button id="reviewConnections" type="button" class="btn btn-sm">Review Connections</button>
+  </aside>
+  <div id="demoBanner" class="demo-banner" hidden>
+    <div><strong>Demo mode</strong> · Simulated tickets only. Your real progress is untouched.</div>
+    <div class="demo-actions">
+      <button type="button" class="btn btn-sm" data-demo="normal">+ Ticket</button>
+      <button type="button" class="btn btn-sm" data-demo="hd">+ Help Desk</button>
+      <button type="button" class="btn btn-sm" data-demo="critical">+ Critical</button>
+      <button type="button" class="btn btn-sm" data-demo="mixed" data-count="25">+25 tickets</button>
+      <button type="button" class="btn btn-sm btn-ghost" id="demoReset">Reset</button>
+      <button type="button" class="btn btn-sm btn-ghost" id="demoExit">Exit demo</button>
+    </div>
+  </div>
+
+  <div class="namebar">
+    <div class="name-wrap">
+      <span id="buddyName" class="buddy-name">Bit</span>
+      <button id="renameBtn" class="icon-btn icon-btn-sm" type="button" title="Rename" aria-label="Rename buddy">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>
+      </button>
+      <form id="renameForm" class="rename-form" hidden>
+        <input id="renameInput" maxlength="24" aria-label="Buddy name" autocomplete="off">
+        <button class="btn btn-sm btn-primary" type="submit">Save</button>
+        <button class="btn btn-sm btn-ghost" type="button" id="renameCancel">Cancel</button>
+      </form>
+    </div>
+    <div class="chips">
+      <span id="levelChip" class="chip chip-level">Lv 1</span>
+      <span id="stageChip" class="chip">Sprout Bot</span>
+      <span id="moodChip" class="chip chip-mood">Relaxed</span>
+    </div>
+  </div>
+
+  <div class="scene-wrap">
+    <svg id="scene" class="scene" viewBox="0 0 160 120" shape-rendering="crispEdges" role="img" aria-label="Byte Buddy's room">
+      <g id="roomLayer"></g>
+      <g id="actorLayer"></g>
+      <rect id="nightShade" x="0" y="0" width="160" height="120" fill="#0b1030" opacity="0"/>
+      <rect id="sleepShade" x="0" y="0" width="160" height="120" fill="#060814" opacity="0"/>
+      <g id="fxLayer"></g>
+      <rect id="flash" x="0" y="0" width="160" height="120" fill="#ffffff" opacity="0" pointer-events="none"/>
+    </svg>
+    <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+    <div id="syncOverlay" class="sync-chip" hidden><span class="spinner" aria-hidden="true"></span><span id="syncOverlayText">Syncing…</span></div>
+  </div>
+
+  <div class="xp">
+    <div class="xp-labels"><span id="xpLeft">Level 1</span><span id="xpRight">0 / 250 XP</span></div>
+    <div class="xp-bar" role="progressbar" aria-label="Experience toward next level" aria-valuemin="0" aria-valuemax="100" id="xpBar"><div id="xpFill" class="xp-fill"></div></div>
+    <div id="xpSources" class="xp-sources" aria-label="Overall XP by source"></div>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" id="tab-home" aria-controls="panel-home" aria-selected="true" data-tab="home">Home</button>
+    <button type="button" role="tab" id="tab-customize" aria-controls="panel-customize" aria-selected="false" data-tab="customize" tabindex="-1">Customize</button>
+    <button type="button" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false" data-tab="progress" tabindex="-1">Progress</button>
+    <button type="button" role="tab" id="tab-challenges" aria-controls="panel-challenges" aria-selected="false" data-tab="challenges" tabindex="-1">Challenges</button>
+    <button type="button" role="tab" id="tab-achievements" aria-controls="panel-achievements" aria-selected="false" data-tab="achievements" tabindex="-1">Achievements</button>
+    <button type="button" role="tab" id="tab-connections" aria-controls="panel-connections" aria-selected="false" data-tab="connections" tabindex="-1">Connections</button>
+    <button type="button" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" data-tab="how" tabindex="-1">How it works</button>
+  </nav>
+
+  <main class="panels">
+    <section id="panel-home" role="tabpanel" aria-labelledby="tab-home" class="panel">
+      <section class="card home-section pet-home" aria-labelledby="petHomeTitle">
+      <h2 id="petHomeTitle" class="section-title">Your buddy</h2>
+      <div class="stat-grid">
+        <div class="stat"><span class="stat-label">Mood</span><span id="statMood" class="stat-value stat-text">Relaxed</span></div>
+        <div class="stat"><span class="stat-label">Treats</span><span id="statTreats" class="stat-value">0</span></div>
+      </div>
+      <div class="care" role="group" aria-label="Care for your buddy">
+        <button type="button" class="care-btn" data-care="pet"><span class="care-ico" aria-hidden="true">♥</span>Pet</button>
+        <button type="button" class="care-btn" data-care="feed"><span class="care-ico" aria-hidden="true">●</span>Feed<span id="feedCount" class="care-badge">0</span></button>
+        <button type="button" class="care-btn" data-care="play"><span class="care-ico" aria-hidden="true">◆</span>Play</button>
+        <button type="button" class="care-btn" data-care="rest" id="restBtn"><span class="care-ico" aria-hidden="true">☾</span><span id="restLabel">Rest</span></button>
+      </div>
+      <div class="meters" aria-label="Care levels">
+        <div class="meter"><span>Affection</span><div class="meter-bar"><div id="mAffection" class="meter-fill m-aff"></div></div></div>
+        <div class="meter"><span>Energy</span><div class="meter-bar"><div id="mEnergy" class="meter-fill m-energy"></div></div></div>
+        <div class="meter"><span>Fullness</span><div class="meter-bar"><div id="mFullness" class="meter-fill m-full"></div></div></div>
+      </div>
+      </section>
+      <section class="card progress-home github-home" aria-labelledby="githubHomeTitle">
+        <div class="sync-row">
+          <h2 id="githubHomeTitle" class="section-title">GitHub Progress</h2>
+          <button type="button" id="githubRefresh" class="btn btn-sm">Sync GitHub</button>
+        </div>
+        <p id="githubSyncStatus" class="hint" role="status"></p>
+        <div id="githubSyncError" class="sync-error" hidden></div>
+        <div id="githubHomeStats" class="stat-grid"></div>
+        <p id="githubQualityNote" class="hint"></p>
+        <div id="githubHomeGoals" class="home-goals"></div>
+        <div id="githubHomeAchievements" class="home-achievements"></div>
+        <button type="button" id="githubExplore" class="btn btn-sm btn-ghost">Explore GitHub analytics →</button>
+      </section>
+      <section class="card progress-home ticket-home" aria-labelledby="ticketHomeTitle">
+        <div class="sync-row">
+          <h2 id="ticketHomeTitle" class="section-title">Ticket Progress</h2>
+          <button type="button" id="refreshBtn" class="btn btn-sm"><span id="refreshLabel">Sync Tickets</span></button>
+        </div>
+        <p id="syncStatus" class="hint" role="status">Not synced yet</p>
+        <div id="syncError" class="sync-error" hidden></div>
+        <div id="ticketHomeStats" class="stat-grid"></div>
+        <p id="ticketSummary" class="hint"></p>
+        <div id="ticketHomeGoals" class="home-goals"></div>
+        <div id="ticketHomeAchievements" class="home-achievements"></div>
+        <button type="button" id="ticketExplore" class="btn btn-sm btn-ghost">Explore ticket analytics →</button>
+      </section>
+    </section>
+
+    <section id="panel-customize" role="tabpanel" aria-labelledby="tab-customize" class="panel" hidden>
+      <div id="customizeNav" class="progress-nav" role="tablist" aria-label="Customization section">
+        <button id="customize-evolution-tab" type="button" role="tab" aria-selected="true" aria-controls="evolutionCustomize" data-customize="evolution">Evolution</button>
+        <button id="customize-accessories-tab" type="button" role="tab" aria-selected="false" aria-controls="accessoriesCustomize" data-customize="accessories" tabindex="-1">Accessories</button>
+      </div>
+      <section id="evolutionCustomize" class="progress-section" role="tabpanel" aria-labelledby="customize-evolution-tab">
+      <div class="card">
+        <h2 class="section-title">Buddies &amp; evolution</h2>
+        <p id="evoWallet" class="evo-wallet"></p>
+        <p id="evoCreditNote" class="hint"></p>
+        <div id="buddyTypes" class="buddy-types" role="group" aria-label="Active buddy type"></div>
+        <ol id="evoTrack" class="evo-track"></ol>
+        <p id="evoNext" class="hint"></p>
+        <div class="evo-actions"><button type="button" id="evoUpgrade" class="btn">Upgrade</button><button type="button" id="evoReset" class="btn btn-ghost">Reset all evolutions</button></div>
+        <p id="evoStatus" class="hint" role="status" aria-live="polite"></p>
+        <dialog id="evoConfirm" aria-labelledby="evoConfirmTitle" aria-describedby="evoConfirmText">
+          <h2 id="evoConfirmTitle">Reset every evolution?</h2>
+          <p id="evoConfirmText"></p>
+          <form method="dialog" class="evo-actions"><button type="submit" value="cancel" class="btn" autofocus>Keep evolutions</button><button type="submit" value="reset" class="btn btn-ghost">Reset all &amp; refund</button></form>
+        </dialog>
+      </div>
+      </section>
+      <section id="accessoriesCustomize" class="progress-section" role="tabpanel" aria-labelledby="customize-accessories-tab" hidden>
+        <div class="cat-tabs" role="tablist" aria-label="Customization categories" id="catTabs"></div>
+        <p id="catHint" class="hint"></p>
+        <div id="itemGrid" class="item-grid"></div>
+      </section>
+    </section>
+
+    <section id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" class="panel" hidden>
+      <div id="progressNav" class="progress-nav" role="tablist" aria-label="Progress source">
+        <button id="progress-ticket-tab" type="button" role="tab" aria-selected="true" aria-controls="ticketProgress" data-progress="ticket">Ticket Progress</button>
+        <button id="progress-github-tab" type="button" role="tab" aria-selected="false" aria-controls="githubProgress" data-progress="github" tabindex="-1">GitHub Progress</button>
+      </div>
+      <div id="ticketProgress" class="progress-section" role="tabpanel" aria-labelledby="progress-ticket-tab">
+      <div class="range-row">
+        <h2 class="section-title">Ticket analytics</h2>
+        <div id="ticketRanges" class="range-controls" role="group" aria-label="Ticket activity date range">
+          <button type="button" data-range="7" aria-pressed="false">7 days</button>
+          <button type="button" data-range="30" aria-pressed="false">30 days</button>
+          <button type="button" data-range="90" aria-pressed="false">90 days</button>
+          <button type="button" data-range="all" aria-pressed="true">All time</button>
+        </div>
+      </div>
+      <p id="ticketRangeNote" class="hint"></p>
+      <div class="stat-grid stat-grid-wide" id="progressStats"></div>
+      <div id="ticketCharts" class="analytics-grid"></div>
+      <div class="card">
+        <div class="card-title">Recent tickets</div>
+        <ul id="recentList" class="ticket-list"></ul>
+      </div>
+      </div>
+      <section id="githubProgress" class="progress-section" role="tabpanel" aria-labelledby="progress-github-tab" hidden>
+        <div class="range-row">
+          <h2 class="section-title">GitHub analytics</h2>
+          <div id="githubRanges" class="range-controls" role="group" aria-label="GitHub activity date range">
+            <button type="button" data-range="7" aria-pressed="false">7 days</button>
+            <button type="button" data-range="30" aria-pressed="false">30 days</button>
+            <button type="button" data-range="90" aria-pressed="false">90 days</button>
+            <button type="button" data-range="all" aria-pressed="true">All time</button>
+          </div>
+        </div>
+        <p id="githubRangeNote" class="hint"></p>
+        <div id="githubStats" class="stat-grid stat-grid-wide"></div>
+        <div id="githubEvidence" class="card evidence"></div>
+        <div id="githubCharts" class="analytics-grid"></div>
+        <div id="githubBreakdown" class="card chart-card" data-chart-key="github:breakdown"></div>
+        <div id="githubComparisons" class="card chart-card" data-chart-key="github:comparisons"></div>
+        <div class="card"><div class="card-title">Recent GitHub rewards</div><p class="hint">Latest rewarded activity across all time, independent of the chart range.</p><ul id="githubRecent" class="ticket-list"></ul></div>
+      </section>
+    </section>
+    <section id="panel-challenges" role="tabpanel" aria-labelledby="tab-challenges" class="panel" hidden>
+      <div class="card">
+        <div class="card-title">Challenges <span id="chalCount" class="muted"></span></div>
+        <p id="chalToday" class="hint"></p>
+        <div id="challengeFilters" class="catalog-filters" aria-label="Challenge filters">
+          <label>Source<select data-filter="source"><option value="all">All sources</option><option value="ticket">Tickets</option><option value="github">GitHub</option><option value="combined">Combined</option><option value="care">Buddy care</option><option value="overall">Overall</option></select></label>
+          <label>Status<select data-filter="status"><option value="all">All challenges</option><option value="earned">Earned</option><option value="pending">Not yet earned</option></select></label>
+          <label>Type<select data-filter="type"><option value="all">All types</option><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option><option value="ticket">Per ticket</option><option value="once">One-time</option><option value="secret">Secret</option></select></label>
+          <label>Sort<select data-filter="sort"><option value="default">Catalog order</option><option value="name">Name</option><option value="xp">XP reward: high first</option><option value="completed">Times earned: high first</option></select></label>
+        </div>
+        <ul id="chalList" class="chal-grid"></ul>
+      </div>
+    </section>
+    <section id="panel-achievements" role="tabpanel" aria-labelledby="tab-achievements" class="panel" hidden>
+      <div class="card">
+        <div class="card-title">Achievements <span id="achCount" class="muted"></span></div>
+        <div id="achievementFilters" class="catalog-filters" aria-label="Achievement filters">
+          <label>Source<select data-filter="source"><option value="all">All sources</option><option value="ticket">Tickets</option><option value="github">GitHub</option><option value="combined">Combined</option><option value="care">Buddy care</option><option value="overall">Overall</option></select></label>
+          <label>Status<select data-filter="status"><option value="all">All achievements</option><option value="earned">Unlocked</option><option value="pending">Locked</option></select></label>
+          <label>Grade<select data-filter="type"><option value="all">All grades</option><option value="Bronze">Bronze</option><option value="Silver">Silver</option><option value="Gold">Gold</option><option value="Platinum">Platinum</option><option value="Diamond">Diamond</option></select></label>
+          <label>Sort<select data-filter="sort"><option value="default">Catalog order</option><option value="name">Name</option><option value="recent">Recently unlocked</option><option value="grade">Grade: high first</option></select></label>
+        </div>
+        <ul id="achList" class="ach-grid"></ul>
+      </div>
+    </section>
+    <section id="panel-connections" role="tabpanel" aria-labelledby="tab-connections" class="panel connections" hidden>
+      <h2 class="section-title">Connections</h2>
+      <p class="hint">GitHub imports only your chosen organizations and repositories, on manual sync. Existing rewards are preserved when GitHub is disabled.</p>
+      <div id="savedConnections"></div>
+    </section>
+    <section id="panel-how" role="tabpanel" aria-labelledby="tab-how" class="panel" hidden>
+      <div class="card">
+        <div class="card-title">How rewards work</div>
+        <ul class="rules">
+          <li><span class="kind kind-normal">Ticket</span> Closed development ticket: <strong>100 XP</strong>, 1 treat</li>
+          <li><span class="kind kind-hd">Help Desk</span> Resolved HD issue: <strong>200 XP</strong>, 2 treats</li>
+          <li><span class="kind kind-critical">Critical</span> Critical production issue (HD, severity 3+): <strong>400 XP</strong>, 3 treats</li>
+          <li><span class="kind kind-bonus">Bonus</span> Challenges pay extra XP and treats: busy days, quick HD fixes, full weeks, new requesters, and a few secrets.</li>
+          <li>Ticket and GitHub XP increase your overall level and shared evolution credits. Choose Robot, Cat, Dog, Dragon or Slime freely in Customize. Buy stages 2–5 for 5,000 / 15,000 / 30,000 / 50,000 credits per buddy. Spending never lowers your level; earned cosmetics and care are shared. Display any owned stage, or reset every evolution for a full spending refund. XP corrections keep owned stages but may create a credit deficit.</li>
+          <li><span class="kind kind-github">GitHub</span> Verified contributions and challenges earn XP. Opening, merging, reviewing, and helpful feedback have distinct rewards, subject to configured limits. Refreshing does not award the same activity twice.</li>
+          <li>A clean merge requires review evidence, not silence. Missing or incomplete review data is marked unknown. Milestone cosmetics appear in Customize and stay unlocked.</li>
+          <li>Only closed tickets assigned to you count, each exactly once. A reopened ticket's XP is held until it closes again; unlocked items are always kept.</li>
+        </ul>
+        <button type="button" id="exportCurrentSave" class="btn btn-sm">Export current save</button>
+        <p id="exportStatus" class="hint" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="chartModal" class="chart-modal" aria-labelledby="chartModalTitle" aria-describedby="chartModalNote">
+    <header class="range-row"><h2 id="chartModalTitle"></h2><button id="chartModalClose" type="button" class="btn btn-sm">Close</button></header>
+    <p id="chartModalNote" class="hint"></p>
+    <div class="chart-interaction"><label>Chart style<select id="chartStyle"><option value="lines">Lines</option><option value="bars">Bars</option></select></label></div>
+    <div id="chartModalBody"></div>
+  </dialog>
+
+  <div id="celebration" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="celTitle">
+      <svg id="celArt" class="modal-art" viewBox="-30 -70 60 74" shape-rendering="crispEdges" aria-hidden="true"></svg>
+      <h2 id="celTitle">Level up!</h2>
+      <p id="celBody"></p>
+      <button type="button" id="celOk" class="btn btn-primary">Nice!</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
