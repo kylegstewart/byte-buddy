@@ -1,6 +1,8 @@
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
+import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { createUpdater } from "./update.mjs";
 import { ACCESSORY_SLOTS, ITEM_BY_ID } from "./catalog.mjs";
 import { TicketSourceError, copilotHome, createItSource, normalizeTicket, resolveUserId } from "./itsource.mjs";
@@ -9,6 +11,7 @@ import { createSyncService } from "./sync.mjs";
 import { createBuddyServer } from "./server.mjs";
 import { createGitHubSource } from "./github-source.mjs";
 import { createGitHubSyncService } from "./github-sync.mjs";
+import { createLoungeClient } from "./lounge.mjs";
 const userId = resolveUserId();
 const sessionRef = { current: null };
 const store = createStore({ root: join(copilotHome(), "extensions", "dev-buddy"), userId });
@@ -16,7 +19,12 @@ const source = createItSource();
 const sync = createSyncService({ store, source, userId, sessionRef });
 const github = createGitHubSyncService({ store, source: createGitHubSource() });
 const updater = createUpdater({ dir: dirname(fileURLToPath(import.meta.url)) });
-const server = createBuddyServer({ store, sync, github, updater });
+const execFileAsync = promisify(execFile);
+const lounge = createLoungeClient({
+    configPath: join(copilotHome(), "extensions", "dev-buddy", "lounge.json"),
+    getGitHubToken: async () => (await execFileAsync("gh", ["auth", "token", "--hostname", "github.com"], { windowsHide: true, timeout: 10_000 })).stdout.trim(),
+});
+const server = createBuddyServer({ store, sync, github, updater, lounge });
 
 function toCanvasError(error) {
     if (error instanceof CanvasError) return error;
@@ -128,6 +136,11 @@ const canvas = createCanvas({
             description: "Select explicit GitHub organizations and repositories (union) for manual discovery. Empty scope pauses imports; earned history is retained.",
             inputSchema: { type: "object", properties: { enabled: { type: "boolean" }, repositories: { type: "array", maxItems: 100, items: { type: "string" } }, organizations: { type: "array", maxItems: 100, items: { type: "string" } } } },
             handler: guard((input) => store.setGitHubSettings(input)),
+        },
+        {
+            name: "get_lounge_state",
+            description: "Returns The Lounge multiplayer status: server URL, joined org, connection status, and members in the room. Read-only.",
+            handler: guard(() => lounge.state()),
         },
         {
             name: "get_ticket_progress",

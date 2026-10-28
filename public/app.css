@@ -349,6 +349,24 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
   .connection-actions > .btn { flex: 1 1 100%; }
 }
 
+/* The Lounge */
+.lounge-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.lounge-row label { flex: 1 1 180px; }
+.lounge-row select { width: 100%; min-width: 0; border: 1px solid var(--db-border); border-radius: 6px; background: var(--db-bg); color: var(--db-fg); padding: 7px 8px; font: inherit; }
+.lounge .hint:empty { display: none; }
+.lounge-status { margin: 0; font-size: 12px; padding: 8px; border-left: 3px solid var(--db-accent); background: var(--db-surface); }
+.lounge-status[data-status="connected"] { border-left-color: var(--db-green); }
+.lounge-status[data-status="error"], .lounge-status[data-status="unavailable"] { border-left-color: var(--db-red); }
+.lounge-room { display: block; width: 100%; aspect-ratio: 4 / 3; border: 1px solid var(--db-border); border-radius: var(--db-radius); background: var(--db-surface-2); cursor: pointer; touch-action: manipulation; }
+.lounge-room:focus-visible { outline: 2px solid var(--db-focus, var(--db-accent)); outline-offset: 2px; }
+.lounge-member { transition: transform 400ms linear; }
+.lounge-label { fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .6); stroke-width: 1.2px; font-family: ui-monospace, Consolas, monospace; }
+.lounge-self .lounge-label { fill: #ffd84a; }
+.lounge-self-marker { fill: #ffd84a; opacity: .8; }
+.lounge-members { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; font-size: 12px; overflow-wrap: anywhere; }
+.reduced .lounge-member { transition: none; }
+@media (prefers-reduced-motion: reduce) { .lounge-member { transition: none; } }
+
 /* Modal */
 .chart-modal { box-sizing: border-box; width: min(1000px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 16px; border: 1px solid var(--db-border); border-radius: 12px; background: var(--db-bg); color: var(--db-fg); overflow: auto; }
 .chart-modal::backdrop { background: rgba(5, 8, 20, .7); }

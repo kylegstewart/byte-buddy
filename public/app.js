@@ -1,5 +1,6 @@
 import { W, FLOOR_Y, buddy as robot, room, furnitureLayer, FURNITURE, buddyMetrics as artMetrics, sprites, rect } from "./art.js";
 import { createPetMotion } from "./pet-motion.js";
+import { createLoungeView } from "./lounge.js";
 
 const CFG = window.BUDDY_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -164,6 +165,29 @@ function connectEvents() {
     source.addEventListener("change", () => loadState());
     source.addEventListener("fx", (event) => {
         try { handleFx(JSON.parse(event.data)); } catch { /* ignore malformed */ }
+    });
+    mountLounge(source);
+}
+
+// ---------- The Lounge ----------
+let loungeView = null;
+let loungeVersion = 0;
+
+function mountLounge(source) {
+    try {
+        loungeView = createLoungeView({
+            api, esc, toast, renderBuddy: robot, buddyViewBox: robotViewBox,
+            getOrgs: () => state?.github?.settings?.organizations || [],
+            getBuddy: () => ({ ...robotOpts(), name: state?.name }),
+        });
+    } catch { return; }
+    source.addEventListener("lounge", (event) => {
+        loungeVersion++;
+        try { loungeView.update(JSON.parse(event.data)); } catch { /* ignore malformed */ }
+    });
+    source.addEventListener("open", () => {
+        const version = loungeVersion;
+        api("/api/lounge").then((data) => { if (version === loungeVersion) loungeView.update(data); }, () => loungeView.unavailable());
     });
 }
 
@@ -346,6 +370,7 @@ function render() {
     if (ui.tab === "progress") renderProgress();
     if (ui.tab === "challenges") renderChallenges();
     if (ui.tab === "achievements") renderAchievements();
+    if (ui.tab === "lounge") loungeView?.render();
     renderRoom();
     $("scene").setAttribute("aria-label", `${state.name}, a level ${p.level} ${p.stageName}, is ${state.care.sleeping ? "sleeping" : state.mood.toLowerCase()}. Click the buddy to pet; hold for one second to pick up, then drag and release. Enter or Space pets; Escape cancels.`);
 }

@@ -3,3 +3,5 @@ artifacts/
 *.update-tmp
 *.tmp
 node_modules/
+lounge-server/lounge.log
+lounge.json

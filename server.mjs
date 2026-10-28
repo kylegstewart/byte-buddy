@@ -12,11 +12,12 @@ const STATIC = {
     "/static/app.js": "text/javascript; charset=utf-8",
     "/static/art.js": "text/javascript; charset=utf-8",
     "/static/pet-motion.js": "text/javascript; charset=utf-8",
+    "/static/lounge.js": "text/javascript; charset=utf-8",
 };
 const INSTANCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_BODY = 64 * 1024;
 
-export function createBuddyServer({ store, sync, github, updater }) {
+export function createBuddyServer({ store, sync, github, updater, lounge, loungeIdleMs = 30_000 }) {
     const token = randomBytes(24).toString("hex");
     const clients = new Set();
     let server;
@@ -38,6 +39,32 @@ export function createBuddyServer({ store, sync, github, updater }) {
     const onFx = (fx) => broadcast("fx", fx);
     store.events.on("change", onChange);
     store.events.on("fx", onFx);
+
+    // The lounge is presence: leave once no panel has been open for loungeIdleMs.
+    let pendingLounge = null;
+    let loungeIdle = null;
+    const loungeActive = () => lounge && lounge.state().status !== "idle";
+    const checkLoungeIdle = () => {
+        if (clients.size || !loungeActive()) {
+            clearTimeout(loungeIdle);
+            loungeIdle = null;
+        } else if (!loungeIdle) {
+            loungeIdle = setTimeout(() => {
+                loungeIdle = null;
+                if (!clients.size && loungeActive()) lounge.leave().catch(() => {});
+            }, loungeIdleMs);
+            loungeIdle.unref();
+        }
+    };
+    const onLounge = () => {
+        checkLoungeIdle();
+        if (pendingLounge) return;
+        pendingLounge = setImmediate(() => {
+            pendingLounge = null;
+            broadcast("lounge", lounge.state());
+        });
+    };
+    lounge?.events.on("change", onLounge);
 
     const keepAlive = setInterval(() => {
         for (const res of clients) res.write(": ping\n\n");
@@ -92,6 +119,12 @@ export function createBuddyServer({ store, sync, github, updater }) {
         "/api/demo/ticket": (body) => store.simulateDemoTicket(String(body.kind || "normal"), Number(body.count) || 1),
         "/api/demo/reset": () => store.resetDemo(),
         "/api/ack": (body) => store.ackCelebrations(Array.isArray(body.ids) ? body.ids.map(String) : []),
+        ...(lounge ? {
+            "/api/lounge/join": (body) => lounge.join({ org: body.org, buddy: body.buddy }),
+            "/api/lounge/leave": () => lounge.leave(),
+            "/api/lounge/move": (body) => lounge.move({ x: body.x, y: body.y }),
+            "/api/lounge/config": (body) => lounge.setServerUrl(typeof body.url === "string" ? body.url : ""),
+        } : {}),
         "/api/sync": async (body) => {
             const instance = INSTANCE_PATTERN.test(String(body.instance || "")) ? body.instance : null;
             const outcome = await sync.refresh(instance);
@@ -134,11 +167,16 @@ export function createBuddyServer({ store, sync, github, updater }) {
             return send(res, 200, info);
         }
         if (req.method === "GET" && path === "/api/export") return send(res, 200, store.exportState());
+        if (req.method === "GET" && path === "/api/lounge" && lounge) return send(res, 200, lounge.state());
         if (req.method === "GET" && path === "/api/events") {
             res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
             res.write("retry: 2000\n\n");
             clients.add(res);
-            req.on("close", () => clients.delete(res));
+            checkLoungeIdle();
+            req.on("close", () => {
+                clients.delete(res);
+                checkLoungeIdle();
+            });
             return;
         }
         const route = req.method === "POST" ? POST_ROUTES[path] : null;
@@ -176,6 +214,13 @@ export function createBuddyServer({ store, sync, github, updater }) {
             pendingChange = null;
             store.events.off("change", onChange);
             store.events.off("fx", onFx);
+            clearTimeout(loungeIdle);
+            if (pendingLounge) clearImmediate(pendingLounge);
+            pendingLounge = null;
+            if (lounge) {
+                lounge.events.off("change", onLounge);
+                await lounge.close().catch(() => {});
+            }
             for (const client of clients) client.end();
             clients.clear();
             if (server) await new Promise((resolve) => server.close(resolve));

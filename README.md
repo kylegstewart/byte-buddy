@@ -34,6 +34,67 @@ While held, the buddy rotates and scales around the exact painted pixel you grab
 
 The pet interaction update changes backend modules and static routing, so **restart Copilot** to activate it fully; refreshing the iframe alone is not sufficient.
 
+## The Lounge (multiplayer prototype)
+
+The Lounge is a shared room per GitHub organization. Everyone who joins the same org sees each other's buddies and logins live, can move their own buddy, and sees others arrive, move and leave. Lounge presence is separate from progression: it never reads or changes XP, rewards or contribution history.
+
+**Architecture.** The canvas iframe talks only to the local Byte Buddy server. The extension (`lounge.mjs`) holds one connection to a small hosted relay (`lounge-server/server.mjs`, Node 22, no dependencies): JSON POSTs upstream and an SSE stream downstream. A GitHub token proves identity once per session. The relay calls `GET /user` and `GET /user/memberships/orgs/{org}` (membership must be `active`), then issues an opaque session token. The relay keeps room state in memory, keyed by org (case-insensitive) and GitHub user id. A second connection from the same account replaces the first, so the same person never appears twice. Members leave when their stream closes, when they click Leave, or after 45s without a heartbeat. Short reconnects keep the buddy's position.
+
+### Run the relay
+
+```sh
+node lounge-server/server.mjs                    # listens on :8787
+docker build -t byte-buddy-lounge lounge-server && docker run -p 8787:8787 byte-buddy-lounge
+```
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `PORT` / `HOST` | `8787` / `0.0.0.0` | Listen address (`PORT=0` picks a free port). |
+| `LOUNGE_ALLOWED_ORGS` | *(any)* | Comma-separated allow-list. Other orgs are rejected before GitHub is called. |
+| `LOUNGE_STALE_MS` | `45000` | Evict members whose heartbeats stop. |
+| `LOUNGE_GITHUB_API` | `https://api.github.com` | GitHub API base (tests point this at a mock). |
+
+`GET /healthz` returns `{ok, rooms, members}`. Rooms are single-process and in-memory: run one instance, and expect a restart to clear rooms (clients reconnect automatically).
+
+**HTTPS is required** for any non-localhost URL. Put the relay behind a TLS host or reverse proxy, for example a container app or VM with Caddy or nginx, or use a tunnel (`cloudflared tunnel --url http://localhost:8787`, `ngrok http 8787`). The proxy must not buffer `text/event-stream` responses. The relay sends `X-Accel-Buffering: no` and a ping every 15s.
+
+### Host from a Windows PC (free, stable URL)
+
+This uses Tailscale Funnel for public HTTPS at `https://<machine>.<tailnet>.ts.net` and a scheduled task to keep the relay running. The Lounge is only reachable while the PC is on.
+
+1. Install and sign in to Tailscale (`winget install Tailscale.Tailscale`, then sign in from the tray icon or with `tailscale up`).
+2. Publish the port with `tailscale funnel --bg 8787`. Approve the HTTPS/Funnel prompt if one appears. The setting persists across reboots, and `tailscale funnel status` shows the public URL.
+3. Register the relay task: `powershell -ExecutionPolicy Bypass -File lounge-server\register-lounge-task.ps1 [-AllowedOrgs "my-org"]`, then `Start-ScheduledTask ByteBuddyLounge`. The task starts at logon, daily at 8 AM and re-checks every 5 minutes (so a killed relay comes back on its own), ignores a start if the relay is already running, and restarts node if it exits. Output goes to `lounge-server\lounge.log`.
+4. Check `https://<machine>.<tailnet>.ts.net/healthz`, then use that URL as the Lounge server.
+
+To stop everything, run `Stop-ScheduledTask ByteBuddyLounge`, then stop the `node ...lounge-server\server.mjs` process, which outlives the task. To remove the task, run `Unregister-ScheduledTask ByteBuddyLounge`. To unpublish, run `tailscale funnel --https=443 off`.
+
+### Connect Byte Buddy
+
+1. In **Connections**, enable GitHub and add the organization. The Lounge only offers orgs from this scope.
+2. Open the **Lounge** tab, enter the relay URL (`https://…`) and click **Save**. The URL is stored in `<copilot home>/extensions/dev-buddy/lounge.json`. The `BYTE_BUDDY_LOUNGE_URL` env var overrides it and locks the field.
+3. Pick the org and click **Join**. To move your buddy, click or tap the floor, or focus the room and use the arrow keys or WASD. Click **Leave** to exit. Closing the canvas also leaves after about 30s.
+
+Restart Copilot after installing this version so the new backend modules load. Reloading the iframe alone is not enough.
+
+### Test with two users
+
+1. Deploy the relay at an HTTPS URL that both machines can reach.
+2. User A and user B are on different machines and both members of org **X**. Each signs in to `gh` (`gh auth status`) and adds **X** in Connections.
+3. Both save the relay URL in the Lounge tab and join **X**. Each should see both buddies and logins in the room and the member list.
+4. A moves around. B sees A's buddy move, and the other way round.
+5. A clicks **Leave**, or quits Copilot or kills the network. B sees A disappear: immediately on Leave or a closed socket, and within about 45s for a silent network drop. A rejoins and appears exactly once.
+6. A opens Byte Buddy on a second machine and joins **X**. The first window shows "replaced" and B still sees one A.
+7. User C, a member only of org **Y**, joins **Y** and sees neither A nor B. If C tries to join **X**, membership is refused.
+
+### Security notes
+
+- The user's `gh` OAuth token is sent to the relay you configure, over HTTPS. The relay uses it only for the two GitHub calls above and never stores or logs it. Only point Byte Buddy at a relay your organization trusts.
+- Membership checks need the token to read org membership (`read:org`). Orgs that enforce SAML SSO also need the token to be authorized for that org. Otherwise the join is refused with a permission error.
+- Buddy data shared with the room is limited to login, buddy name, type, variant, stage, colors and equipped accessories, all validated by pattern. Positions are clamped to the room, and moves are rate-limited (15/s on the relay, 10/s from the client).
+
+Validation: `lounge-server.test.mjs` (relay protocol), `lounge.test.mjs` (client and local routes), `lounge-ui.test.mjs` (view helpers), and `lounge-e2e.test.mjs`. The e2e test spawns the real relay and three independent extension processes, each running the real `server.mjs` and `lounge.mjs` and driven through the iframe's HTTP/SSE routes. Only GitHub is mocked.
+
 ## XP economy
 
 `economy.mjs` configures GitHub reward weights, a contribution multiplier, thresholds, caps, challenge rewards and level requirements. The multiplier is applied before per-day caps; challenge rewards have their own configured values. Existing ticket rewards remain in `catalog.mjs`; saved ticket XP is retained rather than repriced.

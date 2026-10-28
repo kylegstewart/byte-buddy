@@ -114,7 +114,7 @@
     <button type="button" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false" data-tab="progress" tabindex="-1">Progress</button>
     <button type="button" role="tab" id="tab-challenges" aria-controls="panel-challenges" aria-selected="false" data-tab="challenges" tabindex="-1">Challenges</button>
     <button type="button" role="tab" id="tab-achievements" aria-controls="panel-achievements" aria-selected="false" data-tab="achievements" tabindex="-1">Achievements</button>
-    <button type="button" role="tab" id="tab-connections" aria-controls="panel-connections" aria-selected="false" data-tab="connections" tabindex="-1">Connections</button>
+        <button type="button" role="tab" id="tab-lounge" aria-controls="panel-lounge" aria-selected="false" data-tab="lounge" tabindex="-1">Lounge</button>    <button type="button" role="tab" id="tab-connections" aria-controls="panel-connections" aria-selected="false" data-tab="connections" tabindex="-1">Connections</button>
     <button type="button" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" data-tab="how" tabindex="-1">How it works</button>
   </nav>
 
@@ -260,6 +260,34 @@
           <label>Sort<select data-filter="sort"><option value="default">Catalog order</option><option value="name">Name</option><option value="recent">Recently unlocked</option><option value="grade">Grade: high first</option></select></label>
         </div>
         <ul id="achList" class="ach-grid"></ul>
+      </div>
+    </section>
+    <section id="panel-lounge" role="tabpanel" aria-labelledby="tab-lounge" class="panel lounge" hidden>
+      <div class="card connection-stack">
+        <h2 class="section-title">The Lounge</h2>
+        <p class="hint">Hang out with buddies from your GitHub organization. Membership is verified with your gh account; your token is never shared with other players.</p>
+        <form id="loungeUrlForm" class="lounge-row">
+          <label for="loungeUrl">Lounge server URL<input id="loungeUrl" type="url" placeholder="https://lounge.example.com" spellcheck="false" autocomplete="off"></label>
+          <button id="loungeUrlSave" type="submit" class="btn btn-sm">Save</button>
+        </form>
+        <p id="loungeUrlNote" class="hint"></p>
+        <div class="lounge-row">
+          <label for="loungeOrg">Organization<select id="loungeOrg"></select></label>
+          <button id="loungeJoin" type="button" class="btn btn-primary">Join</button>
+          <button id="loungeLeave" type="button" class="btn" hidden>Leave</button>
+        </div>
+        <p id="loungeOrgHint" class="hint" hidden>Add an organization in Connections to join its lounge.</p>
+        <p id="loungeStatus" class="lounge-status" role="status" aria-live="polite">Not in the lounge.</p>
+        <svg id="loungeRoom" class="lounge-room" viewBox="0 0 160 120" shape-rendering="crispEdges" tabindex="0" role="application" aria-label="Lounge room. Join an organization to see who's here.">
+          <rect x="0" y="0" width="160" height="64" fill="#2b3242"/>
+          <rect x="0" y="58" width="160" height="6" fill="#1f2430"/>
+          <rect x="0" y="64" width="160" height="56" fill="#8d5a3b"/>
+          <rect x="0" y="64" width="160" height="2" fill="#6b4329"/>
+          <rect x="0" y="112" width="160" height="8" fill="#6b4329"/>
+          <g id="loungeMembersLayer"></g>
+        </svg>
+        <div class="card-title">Here now</div>
+        <ul id="loungeMemberList" class="lounge-members"><li class="hint">Nobody here yet.</li></ul>
       </div>
     </section>
     <section id="panel-connections" role="tabpanel" aria-labelledby="tab-connections" class="panel connections" hidden>
