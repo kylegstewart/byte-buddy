@@ -157,7 +157,7 @@ export function createLoungeServer(options = {}) {
         const keep = previous ?? (recent?.org === session.org && now - recent.at <= staleMs ? recent : null);
         const member = {
             id: session.userId, login: session.login, buddy: session.buddy,
-            x: keep ? keep.x : randomIn(20, 140), y: keep ? keep.y : randomIn(70, 108),
+            x: keep ? keep.x : randomIn(760, 2420), y: keep ? keep.y : randomIn(750, 810),
             lastSeen: now, sessionId: session.sessionId, res, moves: [],
         };
         lastPositions.delete(session.userId);
@@ -192,8 +192,8 @@ export function createLoungeServer(options = {}) {
         const now = Date.now();
         member.moves = member.moves.filter((at) => now - at < 1000);
         if (member.moves.length >= MOVES_PER_SEC) throw new LoungeError(429, "rate_limited", "Too many moves.");
-        const x = clamp(body.x, 8, 152);
-        const y = clamp(body.y, 64, 112);
+        const x = clamp(body.x, 0, 3160);
+        const y = clamp(body.y, 0, 1280);
         if (x === null || y === null) throw new LoungeError(400, "bad_position", "x and y must be numbers.");
         member.moves.push(now);
         Object.assign(member, { x, y, lastSeen: now });

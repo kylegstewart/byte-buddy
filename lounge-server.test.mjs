@@ -227,7 +227,7 @@ test("snapshot, join broadcast, org isolation, and leave on stream close", async
     assert.deepEqual(Object.keys(selfMember).sort(), ["buddy", "id", "login", "x", "y"]);
     assert.equal(selfMember.buddy.name, "Ally");
     assert.equal(selfMember.buddy.body, "#123456");
-    assert.ok(selfMember.x >= 20 && selfMember.x <= 140 && selfMember.y >= 70 && selfMember.y <= 108);
+    assert.ok(selfMember.x >= 760 && selfMember.x <= 2420 && selfMember.y >= 750 && selfMember.y <= 810);
 
     const carol = await stream(main.base, sc, { query: true });
     const snapC = await carol.next("snapshot");
@@ -241,9 +241,9 @@ test("snapshot, join broadcast, org isolation, and leave on stream close", async
     assert.equal(bob.of("join").length, 0, "joiner does not receive its own join");
 
     const moved = await post(main.base, "/v1/move", { auth: `Session ${sb}`, body: { x: 1000, y: -5 } });
-    assert.deepEqual(moved.body, { ok: true, x: 152, y: 64 });
-    assert.deepEqual(await alice.next("move"), { id: 2, x: 152, y: 64 });
-    assert.deepEqual(await bob.next("move"), { id: 2, x: 152, y: 64 });
+    assert.deepEqual(moved.body, { ok: true, x: 1000, y: 0 });
+    assert.deepEqual(await alice.next("move"), { id: 2, x: 1000, y: 0 });
+    assert.deepEqual(await bob.next("move"), { id: 2, x: 1000, y: 0 });
     const precise = await post(main.base, "/v1/move", { auth: `Session ${sa}`, body: { x: 50.26, y: 80.04 } });
     assert.deepEqual([precise.body.x, precise.body.y], [50.3, 80]);
     assert.deepEqual(await bob.next("move"), { id: 1, x: 50.3, y: 80 });

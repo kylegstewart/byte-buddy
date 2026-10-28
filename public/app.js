@@ -178,7 +178,7 @@ function mountLounge(source) {
         loungeView = createLoungeView({
             api, esc, toast, renderBuddy: robot, buddyViewBox: robotViewBox,
             getOrgs: () => state?.github?.settings?.organizations || [],
-            getBuddy: () => ({ ...robotOpts(), name: state?.name }),
+            getBuddy: () => ({ ...robotOpts(), name: state?.name }), reduced: reducedMotion,
         });
     } catch { return; }
     source.addEventListener("lounge", (event) => {

@@ -1,12 +1,17 @@
 // The Lounge: shared org room UI. Pure helpers are exported for tests; createLoungeView owns the panel DOM.
+import { WORLD, SPAWN, DEAD_ZONE, isSolid, moveWithCollision, nearestWalkable, viewSize, clampCamera, cameraFollow, centerCamera, smoothCamera, parallaxOffset, mapMarkup, sceneryMarkup, labelsMarkup } from "./lounge-map.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
-export const ROOM = { width: 160, height: 120, minX: 8, maxX: 152, minY: 64, maxY: 112 };
-export const STEP = 6;
-const BUDDY_WIDTH = 36;
-const KEY_STEPS = {
-    arrowleft: [-STEP, 0], a: [-STEP, 0], arrowright: [STEP, 0], d: [STEP, 0],
-    arrowup: [0, -STEP], w: [0, -STEP], arrowdown: [0, STEP], s: [0, STEP],
-};
+export const ROOM = { width: WORLD.width, height: WORLD.height, minX: 0, maxX: WORLD.width, minY: 0, maxY: WORLD.height };
+export const SPEED = 140;
+const BUDDY_WIDTH = 32;
+const SEND_INTERVAL_MS = 100;
+const REMOTE_SPEED = SPEED * 1.25;
+const SNAP_DISTANCE = 120;
+const PARALLAX = [["loungeSceneryFar", 0.15], ["loungeSceneryMid", 0.4], ["loungeSceneryNear", 0.7]];
+const WALK_FRAME_MS = 120;
+const WALK_LINGER_MS = 150;
+const KEY_DIRECTIONS = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
 const ACTIVE = new Set(["connecting", "connected", "reconnecting"]);
 
 export function clampPoint(x, y) {
@@ -14,13 +19,24 @@ export function clampPoint(x, y) {
     return { x: clamp(x, ROOM.minX, ROOM.maxX), y: clamp(y, ROOM.minY, ROOM.maxY) };
 }
 
-export function clientToRoom(clientX, clientY, rect) {
-    if (!rect?.width || !rect?.height) return null;
-    return clampPoint((clientX - rect.left) / rect.width * ROOM.width, (clientY - rect.top) / rect.height * ROOM.height);
+export function directionForKey(key) {
+    return KEY_DIRECTIONS[String(key || "").toLowerCase()] || null;
 }
 
-export function stepForKey(key) {
-    return KEY_STEPS[String(key || "").toLowerCase()] || null;
+/** Unit velocity for the held arrow keys; opposite keys cancel and diagonals are normalized. */
+export function heldVelocity(held) {
+    let dx = 0, dy = 0;
+    for (const key of held) { const dir = KEY_DIRECTIONS[key]; if (dir) { dx += dir[0]; dy += dir[1]; } }
+    const length = Math.hypot(dx, dy);
+    return length ? [dx / length, dy / length] : [0, 0];
+}
+
+/** Moves a displayed point toward its target at a capped speed; far jumps (spawns, rejoins) snap. */
+export function approach(from, to, maxStep) {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= maxStep || distance > SNAP_DISTANCE) return { x: to.x, y: to.y };
+    return { x: from.x + dx / distance * maxStep, y: from.y + dy / distance * maxStep };
 }
 
 export function statusText(lounge) {
@@ -51,7 +67,7 @@ export function diffMembers(existingIds, members) {
 }
 
 export function memberTransform(member) {
-    const { x, y } = clampPoint(member.x, member.y);
+    const x = Math.round(member.x * 10) / 10, y = Math.round(member.y * 10) / 10;
     return `translate(${x}px, ${y}px)`;
 }
 
@@ -60,8 +76,9 @@ function asLoungeState(data) {
     return value && typeof value === "object" && typeof value.status === "string" ? value : null;
 }
 
-export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, buddyViewBox, getOrgs = () => [], getBuddy,
-    doc = globalThis.document, setTimer = globalThis.setTimeout?.bind(globalThis), now = Date.now }) {
+export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, buddyViewBox, getOrgs = () => [], getBuddy, reduced = () => false,
+    doc = globalThis.document, raf = globalThis.requestAnimationFrame?.bind(globalThis), now = () => globalThis.performance?.now?.() ?? Date.now(),
+    ResizeObserver: Observer = globalThis.ResizeObserver, deadZone = DEAD_ZONE }) {
     const $ = (id) => doc.getElementById(id);
     const nodes = new Map();
     let lounge = { status: "idle", serverUrl: "", serverUrlSource: null, org: null, self: null, members: [], error: null };
@@ -69,30 +86,148 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     let busy = false;
     let urlDirty = false;
     let orgKey = null;
-    let target = null;
     let moveInFlight = false;
     let pendingMove = null;
-    let sortTimer = null;
+    const held = new Set();
+    let selfPos = null;
+    let selfId = null;
+    let lastSent = -Infinity;
+    let lastFrame = null;
+    let frameQueued = false;
+    let order = [];
+    let view = viewSize(0, 0);
+    let cam = centerCamera(SPAWN, view);
+    let camGoal = cam;
+    let appliedCam = null;
+
+    function mountScene() {
+        const map = $("loungeMap");
+        if (!map || map.dataset?.mounted) return;
+        const scenery = sceneryMarkup();
+        map.innerHTML = mapMarkup();
+        if (map.dataset) map.dataset.mounted = "1";
+        const layers = { loungeSceneryFar: scenery.far, loungeSceneryMid: scenery.mid, loungeSceneryNear: scenery.near, loungeLabels: labelsMarkup() };
+        for (const [id, html] of Object.entries(layers)) { const node = $(id); if (node) node.innerHTML = html; }
+    }
+
+    function applyCamera() {
+        const room = $("loungeRoom");
+        if (!room) return;
+        const x = Math.round(cam.x * 4) / 4, y = Math.round(cam.y * 4) / 4;
+        const key = `${x} ${y} ${view.width} ${view.height}`;
+        if (appliedCam === key) return;
+        appliedCam = key;
+        room.setAttribute("viewBox", key);
+        for (const [id, factor] of PARALLAX) {
+            const offset = parallaxOffset({ x, y }, factor);
+            $(id)?.setAttribute("transform", `translate(${Math.round(offset.x * 4) / 4} ${Math.round(offset.y * 4) / 4})`);
+        }
+    }
+
+    /** Recomputes the visible world size from the panel and keeps the camera's buddy framing. */
+    function measure() {
+        const rect = $("loungeRoom")?.getBoundingClientRect?.();
+        if (!rect || !(rect.width > 0) || !(rect.height > 0)) return;
+        const next = viewSize(rect.width, rect.height);
+        if (next.width === view.width && next.height === view.height) return;
+        const focus = selfPos || { x: cam.x + view.width / 2, y: cam.y + view.height / 2 };
+        view = next;
+        cam = clampCamera(cam, view);
+        camGoal = cameraFollow(clampCamera(camGoal, view), focus, view, deadZone);
+        cam = camGoal;
+        applyCamera();
+    }
+
+    function followCamera(dt) {
+        if (selfPos) camGoal = cameraFollow(camGoal, selfPos, view, deadZone);
+        cam = smoothCamera(cam, camGoal, dt);
+        applyCamera();
+        return cam.x !== camGoal.x || cam.y !== camGoal.y;
+    }
 
     function selfMember() {
         const selfId = lounge.self?.id;
         return selfId === undefined || selfId === null ? null : (lounge.members || []).find((member) => String(member.id) === String(selfId)) || null;
     }
 
-    function buddyMarkup(member, self) {
-        const buddy = member.buddy || {};
+    function chromeMarkup(member, self) {
+        const marker = self ? '<rect class="lounge-self-marker" x="-14" y="-1" width="28" height="3"/>' : "";
+        return `${marker}<text class="lounge-label" x="0" y="14" font-size="10" text-anchor="middle">${esc(member.login)}</text>`;
+    }
+
+    function spriteMarkup(buddy, pose, frame, look, still) {
         const [left, top, width, height] = String(buddyViewBox(buddy.stage, buddy.variant, buddy.type)).split(/\s+/).map(Number);
         const scale = BUDDY_WIDTH / width;
-        const marker = self ? '<rect class="lounge-self-marker" x="-9" y="-1" width="18" height="2"/>' : "";
-        return `${marker}<svg x="${left * scale}" y="${top * scale}" width="${BUDDY_WIDTH}" height="${height * scale}" viewBox="${left} ${top} ${width} ${height}" overflow="visible" aria-hidden="true">${renderBuddy(buddy)}</svg>`
-            + `<text class="lounge-label" x="0" y="7" font-size="5" text-anchor="middle">${esc(member.login)}</text>`;
+        const art = renderBuddy({ ...buddy, pose, frame, look, still });
+        const lift = pose === "walk" && !still && frame % 2 ? scale : 0;
+        return `<svg x="${left * scale}" y="${top * scale - lift}" width="${BUDDY_WIDTH}" height="${height * scale}" viewBox="${left} ${top} ${width} ${height}" overflow="visible" aria-hidden="true">${art}</svg>`;
+    }
+
+    function drawSprite(entry, time) {
+        const walking = time - entry.movedAt < WALK_LINGER_MS;
+        const still = Boolean(reduced());
+        const pose = walking ? "walk" : "stand";
+        const frame = walking && !still ? Math.floor(time / WALK_FRAME_MS) : 0;
+        const look = walking ? entry.look : 0;
+        const key = `${entry.buddyKey}|${pose}|${frame}|${look}|${still}`;
+        if (entry.spriteKey === key) return;
+        entry.sprite.innerHTML = spriteMarkup(entry.buddy, pose, frame, look, still);
+        entry.spriteKey = key;
+    }
+
+    function place(entry, pos, time) {
+        const dx = pos.x - entry.pos.x, dy = pos.y - entry.pos.y;
+        if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) {
+            entry.movedAt = time;
+            if (Math.abs(dx) > 0.001) entry.look = Math.sign(dx);
+        }
+        entry.pos = pos;
+        entry.el.style.transform = memberTransform(pos);
     }
 
     function sortByDepth() {
-        sortTimer = null;
+        const ordered = [...nodes.values()].sort((a, b) => a.pos.y - b.pos.y || a.id.localeCompare(b.id));
+        if (ordered.length === order.length && ordered.every((entry, i) => entry === order[i])) return;
         const layer = $("loungeMembersLayer");
-        const ordered = [...nodes.values()].sort((a, b) => a.y - b.y || a.id.localeCompare(b.id));
         ordered.forEach((entry) => layer.appendChild(entry.el));
+        order = ordered;
+    }
+
+    function queueFrame() {
+        if (frameQueued || !raf) return;
+        frameQueued = true;
+        raf(tick);
+    }
+
+    // One loop drives local prediction for your buddy and smoothing for everyone else.
+    function tick() {
+        frameQueued = false;
+        const time = now();
+        const dt = lastFrame === null ? 1 / 60 : Math.min(0.1, Math.max(0, (time - lastFrame) / 1000));
+        lastFrame = time;
+        let active = held.size > 0;
+        const [vx, vy] = heldVelocity(held);
+        if (selfPos && (vx || vy)) {
+            selfPos = moveWithCollision(selfPos, vx * SPEED * dt, vy * SPEED * dt);
+            if (time - lastSent >= SEND_INTERVAL_MS) { lastSent = time; sendMove(clampPoint(selfPos.x, selfPos.y)); }
+        }
+        for (const entry of nodes.values()) {
+            const next = entry.self && selfPos ? selfPos : approach(entry.pos, entry.target, REMOTE_SPEED * dt);
+            place(entry, next, time);
+            drawSprite(entry, time);
+            if (next.x !== entry.target.x || next.y !== entry.target.y || time - entry.movedAt < WALK_LINGER_MS) active = true;
+        }
+        sortByDepth();
+        if (followCamera(dt)) active = true;
+        if (active) queueFrame();
+        else lastFrame = null;
+    }
+
+    function stopMoving() {
+        if (!held.size) return;
+        held.clear();
+        if (selfPos) { lastSent = now(); sendMove(clampPoint(selfPos.x, selfPos.y)); }
+        queueFrame();
     }
 
     function renderRoom() {
@@ -101,33 +236,53 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         const self = selfMember();
         const plan = diffMembers(nodes.keys(), lounge.members);
         for (const id of plan.remove) { nodes.get(id).el.remove(); nodes.delete(id); }
-        let reorder = plan.add.length > 0;
+        if (plan.remove.length) order = order.filter((entry) => nodes.has(entry.id));
+        const time = now();
         for (const [id, member] of plan.next) {
+            const isSelf = member === self;
+            const target = clampPoint(member.x, member.y);
+            if (isSelf && !selfPos) {
+                selfPos = target;
+                // Old clients or stale saves can place you inside furniture; step out and tell the room.
+                if (isSolid(selfPos.x, selfPos.y)) { selfPos = nearestWalkable(selfPos); sendMove(clampPoint(selfPos.x, selfPos.y)); }
+                camGoal = centerCamera(selfPos, view);
+                cam = camGoal;
+            }
             let entry = nodes.get(id);
             if (!entry) {
                 const el = doc.createElementNS(SVG_NS, "g");
                 el.setAttribute("class", "lounge-member");
                 el.setAttribute("data-id", id);
-                entry = { id, el, key: null, y: null };
+                const sprite = doc.createElementNS(SVG_NS, "g");
+                sprite.setAttribute("class", "lounge-sprite");
+                const chrome = doc.createElementNS(SVG_NS, "g");
+                el.appendChild(sprite);
+                el.appendChild(chrome);
+                const start = isSelf ? selfPos : target;
+                entry = { id, el, sprite, chrome, key: null, buddy: {}, buddyKey: "", spriteKey: null, pos: start, target: start, look: 0, movedAt: -Infinity, self: false };
                 nodes.set(id, entry);
-                el.style.transform = memberTransform(member);
+                el.style.transform = memberTransform(start);
                 layer.appendChild(el);
-            } else entry.el.style.transform = memberTransform(member);
-            const isSelf = member === self;
-            const key = JSON.stringify([member.login, member.buddy, isSelf]);
+            }
+            entry.target = isSelf ? selfPos : target;
+            entry.self = isSelf;
+            if (!raf) place(entry, entry.target, time);
+            const key = JSON.stringify([member.login, isSelf]);
             if (entry.key !== key) {
-                entry.el.innerHTML = buddyMarkup(member, isSelf);
+                entry.chrome.innerHTML = chromeMarkup(member, isSelf);
                 entry.el.setAttribute("class", isSelf ? "lounge-member lounge-self" : "lounge-member");
                 entry.key = key;
             }
-            if (entry.y !== null && entry.y !== member.y) reorder = true;
-            entry.y = Number(member.y) || 0;
+            const buddyKey = JSON.stringify(member.buddy || {});
+            if (entry.buddyKey !== buddyKey) { entry.buddy = member.buddy || {}; entry.buddyKey = buddyKey; }
+            drawSprite(entry, time);
         }
-        // Reordering re-inserts nodes, which cancels CSS transitions; wait until moves have settled.
-        if (reorder && !sortTimer && setTimer) sortTimer = setTimer(sortByDepth, 450);
+        sortByDepth();
+        applyCamera();
+        queueFrame();
         const room = $("loungeRoom");
         room.setAttribute("aria-label", lounge.status === "connected"
-            ? `Lounge room with ${plan.next.size} buddies. Click or tap the floor to move your buddy; arrow keys or W A S D step.`
+            ? `Lounge room with ${plan.next.size} buddies. Hold the arrow keys to walk your buddy.`
             : "Lounge room. Join an organization to see who's here.");
     }
 
@@ -176,6 +331,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
 
     function render() {
         renderControls();
+        measure();
     }
 
     function update(next) {
@@ -183,7 +339,9 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         if (!value) return;
         available = true;
         lounge = { ...value, members: Array.isArray(value.members) ? value.members : [] };
-        if (lounge.status !== "connected") { target = null; pendingMove = null; }
+        const nextSelfId = lounge.self?.id ?? null;
+        if (lounge.status !== "connected" || String(nextSelfId) !== String(selfId)) { held.clear(); selfPos = null; pendingMove = null; }
+        selfId = nextSelfId;
         renderControls();
         renderMembers();
         renderRoom();
@@ -213,7 +371,6 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
 
     async function sendMove(point) {
         if (lounge.status !== "connected") return;
-        target = { ...point, at: now() };
         if (moveInFlight) { pendingMove = point; return; }
         moveInFlight = true;
         try { await api("/api/lounge/move", point); }
@@ -224,12 +381,6 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
             pendingMove = null;
             if (next) sendMove(next);
         }
-    }
-
-    function currentPosition() {
-        if (target && now() - target.at < 1000) return target;
-        const self = selfMember();
-        return self ? clampPoint(self.x, self.y) : null;
     }
 
     function wire() {
@@ -245,20 +396,29 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         });
         $("loungeLeave").addEventListener("click", () => action("/api/lounge/leave", {}));
         const room = $("loungeRoom");
-        room.addEventListener("click", (event) => {
-            const point = clientToRoom(event.clientX, event.clientY, room.getBoundingClientRect());
-            if (point) sendMove(point);
-        });
         room.addEventListener("keydown", (event) => {
-            const step = stepForKey(event.key);
-            if (!step || event.altKey || event.ctrlKey || event.metaKey) return;
+            if (!directionForKey(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
             event.preventDefault();
-            const from = currentPosition();
-            if (from) sendMove(clampPoint(from.x + step[0], from.y + step[1]));
+            if (lounge.status !== "connected" || !selfPos) return;
+            held.add(event.key.toLowerCase());
+            queueFrame();
         });
+        room.addEventListener("keyup", (event) => {
+            const key = String(event.key || "").toLowerCase();
+            if (!held.has(key)) return;
+            if (held.size === 1) stopMoving();
+            else { held.delete(key); queueFrame(); }
+        });
+        room.addEventListener("blur", stopMoving);
+        doc.addEventListener?.("visibilitychange", () => { if (doc.hidden) stopMoving(); });
+        if (Observer) new Observer(measure).observe(room);
     }
 
+    mountScene();
     wire();
     renderControls();
-    return { update, render, unavailable, sendMove, get state() { return lounge; }, get available() { return available; } };
+    measure();
+    applyCamera();
+    return { update, render, unavailable, sendMove, get state() { return lounge; }, get available() { return available; },
+        get camera() { return { ...cam }; }, get view() { return { ...view }; }, get position() { return selfPos && { ...selfPos }; } };
 }

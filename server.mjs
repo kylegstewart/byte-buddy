@@ -13,6 +13,7 @@ const STATIC = {
     "/static/art.js": "text/javascript; charset=utf-8",
     "/static/pet-motion.js": "text/javascript; charset=utf-8",
     "/static/lounge.js": "text/javascript; charset=utf-8",
+    "/static/lounge-map.js": "text/javascript; charset=utf-8",
 };
 const INSTANCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_BODY = 64 * 1024;

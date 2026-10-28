@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLoungeClient, sanitizeBuddy } from './lounge.mjs';
@@ -254,9 +254,9 @@ test('moves are clamped and throttled to the latest position', async (t) => {
     assert.ok(lounge.log.move.length <= 4, `sent ${lounge.log.move.length} moves`);
     assert.deepEqual(lounge.log.move.at(-1), { x: 49, y: 80 });
     await waitFor(client, (s) => s.members[0].x === 49);
-    client.move({ x: 1000, y: -5 });
+    client.move({ x: 9999, y: -5 });
     await sleep(150);
-    assert.deepEqual(lounge.log.move.at(-1), { x: 152, y: 64 });
+    assert.deepEqual(lounge.log.move.at(-1), { x: 3160, y: 0 });
 });
 
 test('buddy server exposes lounge routes, broadcasts lounge events and auto-leaves', async (t) => {
@@ -282,7 +282,9 @@ test('buddy server exposes lounge routes, broadcasts lounge events and auto-leav
     const headers = { 'x-buddy-token': config.token, 'content-type': 'application/json' };
     assert.equal((await fetch(`${base}/api/lounge`)).status, 401);
     assert.deepEqual(await (await fetch(`${base}/api/lounge`, { headers })).json(), current);
-    if (existsSync(new URL('./public/lounge.js', import.meta.url))) assert.equal((await fetch(`${base}/static/lounge.js`)).status, 200);
+    for (const file of readdirSync(new URL('./public/', import.meta.url)).filter((name) => /\.(js|css)$/.test(name))) {
+        assert.equal((await fetch(`${base}/static/${file}`)).status, 200, `/static/${file} must be served`);
+    }
 
     const sse = new AbortController();
     const stream = await fetch(`${base}/api/events`, { headers, signal: sse.signal });

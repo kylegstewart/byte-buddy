@@ -352,7 +352,7 @@ export function createLoungeClient({ configPath, getGitHubToken, fetch = globalT
     function moveTo({ x, y } = {}) {
         if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) throw new BuddyError("invalid_move", "Move needs numeric x and y.");
         if (status !== "connected") return state();
-        move.pending = { x: clamp(Number(x), 8, 152), y: clamp(Number(y), 64, 112) };
+        move.pending = { x: clamp(Number(x), 0, 3160), y: clamp(Number(y), 0, 1280) };
         if (!move.timer) move.timer = unref(setTimeout(flushMove, Math.max(0, move.last + MOVE_INTERVAL_MS - Date.now())));
         return state();
     }

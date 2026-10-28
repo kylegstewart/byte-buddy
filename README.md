@@ -73,7 +73,9 @@ To stop everything, run `Stop-ScheduledTask ByteBuddyLounge`, then stop the `nod
 
 1. In **Connections**, enable GitHub and add the organization. The Lounge only offers orgs from this scope.
 2. Open the **Lounge** tab, enter the relay URL (`https://…`) and click **Save**. The URL is stored in `<copilot home>/extensions/dev-buddy/lounge.json`. The `BYTE_BUDDY_LOUNGE_URL` env var overrides it and locks the field.
-3. Pick the org and click **Join**. To move your buddy, click or tap the floor, or focus the room and use the arrow keys or WASD. Click **Leave** to exit. Closing the canvas also leaves after about 30s.
+3. Pick the org and click **Join**. To move your buddy, focus the room and hold the arrow keys. Click **Leave** to exit. Closing the canvas also leaves after about 30s.
+
+**Office map.** The room is an explorable office (3160×1280 world units) based on the team floor plan, rotated 180° so the window wall runs along the top. It has offices, the bullpen, standup, conference, break, wellness and server rooms, elevators and the connecting corridors. Walls, windows and furniture block movement, while doorways and hallways stay open. The camera follows your buddy with a dead zone: it scrolls only when you leave the middle 60% of the view, settles without recentering, stays inside the map, and adapts when the panel is resized (`DEAD_ZONE` in `public/lounge-map.js`). Downtown Indianapolis shows through the windows in three parallax layers driven by camera movement. Each user has an independent camera; positions sync in world coordinates.
 
 Restart Copilot after installing this version so the new backend modules load. Reloading the iframe alone is not enough.
 

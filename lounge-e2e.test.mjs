@@ -144,7 +144,7 @@ test('two independent extension processes share an org lounge; other orgs are is
     await alice.post('move', { x: 42, y: 99 });
     await bob.until((s) => { const a = s.members.find((m) => m.login === 'alice'); return a && a.x === 42 && a.y === 99; }, 'bob sees alice move');
     await alice.post('move', { x: 9999, y: -5 });
-    await bob.until((s) => { const a = s.members.find((m) => m.login === 'alice'); return a && a.x === 152 && a.y === 64; }, 'clamped move');
+    await bob.until((s) => { const a = s.members.find((m) => m.login === 'alice'); return a && a.x === 3160 && a.y === 0; }, 'clamped move');
 
     // 4. Hard crash: bob's whole process dies; alice sees him leave with no stale buddy.
     await bob.kill();
