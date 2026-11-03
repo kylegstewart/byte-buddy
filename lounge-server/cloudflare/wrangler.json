@@ -7,7 +7,7 @@
   "preview_urls": false,
   "send_metrics": false,
   "vars": {
-    "LOUNGE_ALLOWED_ORGS": ""
+    "LOUNGE_ALLOWED_ORGS": "meyer-distributing"
   },
   "containers": [
     {

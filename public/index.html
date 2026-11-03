@@ -17,6 +17,7 @@
       <span id="demoPill" class="pill pill-demo" hidden>DEMO</span>
     </div>
     <div class="top-actions">
+      <button id="openLounge" class="btn btn-sm" type="button" aria-controls="loungeView">Enter Lounge</button>
       <button id="settingsBtn" class="icon-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings" title="Settings">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.437-.272.668-.386.133-.066.194-.158.211-.224l.29-1.106C6.009.645 6.556.095 7.299.03 7.53.01 7.764 0 8 0Zm-.571 1.525c-.036.003-.108.036-.137.146l-.289 1.105c-.147.561-.549.967-.998 1.189-.173.086-.34.183-.5.29-.417.278-.97.423-1.529.27l-1.103-.303c-.109-.03-.175.016-.195.045-.22.312-.412.644-.573.99-.014.031-.021.11.059.19l.815.806c.411.406.562.957.53 1.456a4.709 4.709 0 0 0 0 .582c.032.499-.119 1.05-.53 1.456l-.815.806c-.081.08-.073.159-.059.19.162.346.353.677.573.989.02.03.085.076.195.046l1.102-.303c.56-.153 1.113-.008 1.53.27.161.107.328.204.501.29.447.222.85.629.997 1.189l.289 1.105c.029.109.101.143.137.146a6.6 6.6 0 0 0 1.142 0c.036-.003.108-.036.137-.146l.289-1.105c.147-.561.549-.967.998-1.189.173-.086.34-.183.5-.29.417-.278.97-.423 1.529-.27l1.103.303c.109.029.175-.016.195-.045.22-.313.411-.644.573-.99.014-.031.021-.11-.059-.19l-.815-.806c-.411-.406-.562-.957-.53-1.456a4.709 4.709 0 0 0 0-.582c-.032-.499.119-1.05.53-1.456l.815-.806c.081-.08.073-.159.059-.19a6.464 6.464 0 0 0-.573-.989c-.02-.03-.085-.076-.195-.046l-1.102.303c-.56.153-1.113.008-1.53-.27a4.44 4.44 0 0 0-.501-.29c-.447-.222-.85-.629-.997-1.189l-.289-1.105c-.029-.11-.101-.143-.137-.146a6.6 6.6 0 0 0-1.142 0ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9.5 8a1.5 1.5 0 1 0-3.001.001A1.5 1.5 0 0 0 9.5 8Z"/></svg>
       </button>
@@ -47,6 +48,11 @@
         <p id="updateDetails" class="hint"></p>
         <button id="checkUpdates" type="button" class="btn btn-sm">Check for updates</button>
       </div>
+      <div class="pop-row">
+        <span class="pop-label">Save backup</span>
+        <button type="button" id="exportCurrentSave" class="btn btn-sm">Export current save</button>
+        <p id="exportStatus" class="hint" role="status" aria-live="polite"></p>
+      </div>
     </div>
   </header>
 
@@ -54,6 +60,9 @@
     <p id="updateNoticeText"></p>
     <button id="installUpdate" type="button" class="btn btn-sm">Install update</button>
   </aside>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+  <main id="buddyView" class="buddy-view" aria-label="Your Byte Buddy">
   <aside id="connectionsNotice" class="connections-notice" hidden>
     <p id="connectionsNoticeText">GitHub imports are paused. Choose GitHub organizations or repositories to resume.</p>
     <button id="reviewConnections" type="button" class="btn btn-sm">Review Connections</button>
@@ -70,6 +79,7 @@
     </div>
   </div>
 
+  <div class="buddy-overview">
   <div class="namebar">
     <div class="name-wrap">
       <span id="buddyName" class="buddy-name">Bit</span>
@@ -98,7 +108,6 @@
       <g id="fxLayer"></g>
       <rect id="flash" x="0" y="0" width="160" height="120" fill="#ffffff" opacity="0" pointer-events="none"/>
     </svg>
-    <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
     <div id="syncOverlay" class="sync-chip" hidden><span class="spinner" aria-hidden="true"></span><span id="syncOverlayText">Syncing…</span></div>
   </div>
 
@@ -108,17 +117,18 @@
     <div id="xpSources" class="xp-sources" aria-label="Overall XP by source"></div>
   </div>
 
+  </div>
+  <div class="buddy-details">
   <nav class="tabs" role="tablist" aria-label="Sections">
     <button type="button" role="tab" id="tab-home" aria-controls="panel-home" aria-selected="true" data-tab="home">Home</button>
     <button type="button" role="tab" id="tab-customize" aria-controls="panel-customize" aria-selected="false" data-tab="customize" tabindex="-1">Customize</button>
     <button type="button" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false" data-tab="progress" tabindex="-1">Progress</button>
     <button type="button" role="tab" id="tab-challenges" aria-controls="panel-challenges" aria-selected="false" data-tab="challenges" tabindex="-1">Challenges</button>
     <button type="button" role="tab" id="tab-achievements" aria-controls="panel-achievements" aria-selected="false" data-tab="achievements" tabindex="-1">Achievements</button>
-        <button type="button" role="tab" id="tab-lounge" aria-controls="panel-lounge" aria-selected="false" data-tab="lounge" tabindex="-1">Lounge</button>    <button type="button" role="tab" id="tab-connections" aria-controls="panel-connections" aria-selected="false" data-tab="connections" tabindex="-1">Connections</button>
-    <button type="button" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" data-tab="how" tabindex="-1">How it works</button>
+    <button type="button" role="tab" id="tab-connections" aria-controls="panel-connections" aria-selected="false" data-tab="connections" tabindex="-1">Connections</button>
   </nav>
 
-  <main class="panels">
+  <div class="panels">
     <section id="panel-home" role="tabpanel" aria-labelledby="tab-home" class="panel">
       <section class="card home-section pet-home" aria-labelledby="petHomeTitle">
       <h2 id="petHomeTitle" class="section-title">Your buddy</h2>
@@ -262,34 +272,6 @@
         <ul id="achList" class="ach-grid"></ul>
       </div>
     </section>
-    <section id="panel-lounge" role="tabpanel" aria-labelledby="tab-lounge" class="panel lounge" hidden>
-      <div class="card connection-stack">
-        <h2 class="section-title">The Lounge</h2>
-        <p class="hint">Hang out with buddies from your GitHub organization. Membership is verified with your gh account; your token is never shared with other players.</p>
-        <form id="loungeUrlForm" class="lounge-row">
-          <label for="loungeUrl">Lounge server URL<input id="loungeUrl" type="url" placeholder="https://lounge.example.com" spellcheck="false" autocomplete="off"></label>
-          <button id="loungeUrlSave" type="submit" class="btn btn-sm">Save</button>
-        </form>
-        <p id="loungeUrlNote" class="hint"></p>
-        <div class="lounge-row">
-          <label for="loungeOrg">Organization<select id="loungeOrg"></select></label>
-          <button id="loungeJoin" type="button" class="btn btn-primary">Join</button>
-          <button id="loungeLeave" type="button" class="btn" hidden>Leave</button>
-        </div>
-        <p id="loungeOrgHint" class="hint" hidden>Add an organization in Connections to join its lounge.</p>
-        <p id="loungeStatus" class="lounge-status" role="status" aria-live="polite">Not in the lounge.</p>
-        <svg id="loungeRoom" class="lounge-room" viewBox="0 0 720 450" shape-rendering="crispEdges" tabindex="0" role="application" aria-label="Lounge room. Join an organization to see who's here.">
-          <g id="loungeSceneryFar"></g>
-          <g id="loungeSceneryMid"></g>
-          <g id="loungeSceneryNear"></g>
-          <g id="loungeMap"></g>
-          <g id="loungeLabels"></g>
-          <g id="loungeMembersLayer"></g>
-        </svg>
-        <div class="card-title">Here now</div>
-        <ul id="loungeMemberList" class="lounge-members"><li class="hint">Nobody here yet.</li></ul>
-      </div>
-    </section>
     <section id="panel-connections" role="tabpanel" aria-labelledby="tab-connections" class="panel connections" hidden>
       <h2 class="section-title">Connections</h2>
       <div id="desktopConnections" class="connection-stack" hidden>
@@ -319,23 +301,52 @@
       <p class="hint">GitHub imports only your chosen organizations and repositories, on manual sync. Existing rewards are preserved when GitHub is disabled.</p>
       <div id="savedConnections"></div>
     </section>
-    <section id="panel-how" role="tabpanel" aria-labelledby="tab-how" class="panel" hidden>
-      <div class="card">
-        <div class="card-title">How rewards work</div>
-        <ul class="rules">
-          <li><span class="kind kind-normal">Ticket</span> Closed development ticket: <strong>100 XP</strong>, 1 treat</li>
-          <li><span class="kind kind-hd">Help Desk</span> Resolved HD issue: <strong>200 XP</strong>, 2 treats</li>
-          <li><span class="kind kind-critical">Critical</span> Critical production issue (HD, severity 3+): <strong>400 XP</strong>, 3 treats</li>
-          <li><span class="kind kind-bonus">Bonus</span> Challenges pay extra XP and treats: busy days, quick HD fixes, full weeks, new requesters, and a few secrets.</li>
-          <li>Ticket and GitHub XP increase your overall level and shared evolution credits. Choose Robot, Cat, Dog, Dragon or Slime freely in Customize. Buy stages 2–5 for 5,000 / 15,000 / 30,000 / 50,000 credits per buddy. Spending never lowers your level; earned cosmetics and care are shared. Display any owned stage, or reset every evolution for a full spending refund. XP corrections keep owned stages but may create a credit deficit.</li>
-          <li><span class="kind kind-github">GitHub</span> Verified contributions and challenges earn XP. Opening, merging, reviewing, and helpful feedback have distinct rewards, subject to configured limits. Refreshing does not award the same activity twice.</li>
-          <li>A clean merge requires review evidence, not silence. Missing or incomplete review data is marked unknown. Milestone cosmetics appear in Customize and stay unlocked.</li>
-          <li>Only closed tickets assigned to you count, each exactly once. A reopened ticket's XP is held until it closes again; unlocked items are always kept.</li>
-        </ul>
-        <button type="button" id="exportCurrentSave" class="btn btn-sm">Export current save</button>
-        <p id="exportStatus" class="hint" role="status" aria-live="polite"></p>
-      </div>
-    </section>
+  </div>
+  </div>
+  </main>
+
+  <main id="loungeView" class="lounge" aria-labelledby="loungeTitle" hidden>
+    <header class="lounge-heading">
+      <div><h1 id="loungeTitle" tabindex="-1">The Lounge</h1><p class="hint">A shared world for your organization’s buddies.</p></div>
+      <button id="loungeBack" type="button" class="btn" aria-controls="buddyView">Back to Byte Buddy</button>
+    </header>
+    <div class="lounge-layout">
+      <aside class="lounge-sidebar connection-stack" aria-label="Lounge connections and players">
+        <section class="card connection-stack" aria-labelledby="loungeConnectionTitle">
+          <h2 id="loungeConnectionTitle" class="section-title">Join your organization</h2>
+        <p class="hint">Hang out with buddies from your GitHub organization. Membership is verified with your gh account; your token is never shared with other players.</p>
+        <form id="loungeUrlForm" class="lounge-row">
+          <label for="loungeUrl">Lounge server URL<input id="loungeUrl" type="url" placeholder="https://lounge.example.com" spellcheck="false" autocomplete="off"></label>
+          <button id="loungeUrlSave" type="submit" class="btn btn-sm">Save</button>
+        </form>
+        <p id="loungeUrlNote" class="hint"></p>
+        <div class="lounge-row">
+          <label for="loungeOrg">Organization<select id="loungeOrg"></select></label>
+          <button id="loungeJoin" type="button" class="btn btn-primary">Join</button>
+          <button id="loungeLeave" type="button" class="btn" hidden>Leave</button>
+        </div>
+        <p id="loungeOrgHint" class="hint" hidden>Add an organization in Connections to join its lounge.</p>
+          <button id="loungeConnections" type="button" class="btn btn-sm">Manage connections</button>
+          <p class="hint">Returning to Byte Buddy keeps you in the room. Choose Leave to disconnect.</p>
+        </section>
+        <section class="card" aria-labelledby="loungeMembersTitle">
+          <h2 id="loungeMembersTitle" class="section-title">Here now</h2>
+          <ul id="loungeMemberList" class="lounge-members"><li class="hint">Nobody here yet.</li></ul>
+        </section>
+      </aside>
+      <section class="card connection-stack lounge-world" aria-label="Multiplayer world">
+        <p id="loungeStatus" class="lounge-status" role="status" aria-live="polite">Not in the lounge.</p>
+        <svg id="loungeRoom" class="lounge-room" viewBox="0 0 720 450" shape-rendering="crispEdges" tabindex="0" role="application" aria-label="Lounge room. Join an organization to see who's here.">
+          <g id="loungeSceneryFar"></g>
+          <g id="loungeSceneryMid"></g>
+          <g id="loungeSceneryNear"></g>
+          <g id="loungeMap"></g>
+          <g id="loungeLabels"></g>
+          <g id="loungeMembersLayer"></g>
+        </svg>
+        <p class="hint">Click or focus the room, then use the arrow keys to move your buddy.</p>
+      </section>
+    </div>
   </main>
 
   <dialog id="chartModal" class="chart-modal" aria-labelledby="chartModalTitle" aria-describedby="chartModalNote">

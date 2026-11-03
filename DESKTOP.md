@@ -28,6 +28,16 @@ Open **Connections** for data-folder access, GitHub sign-in,
 and ticket MCP configuration. Standard gameplay and analytics remain in their
 existing tabs.
 
+Use **Enter Lounge** in the header to open the separate multiplayer view and
+**Back to Byte Buddy** to return to the previous gameplay tab. Returning stops
+movement but keeps the Lounge session connected; use **Leave** to disconnect.
+**Manage connections** returns directly to Connections. Save export is available
+under **Settings -> Save backup**, replacing the removed How it works tab.
+Desktop content fills the available window width up to 1,440 pixels. Wider
+windows place the buddy beside the gameplay panels and Lounge controls beside
+the world; narrower windows stack these areas. The Copilot canvas keeps its
+compact width.
+
 ## Fresh desktop start
 
 Every new desktop installation starts a new buddy and progression profile.
@@ -204,6 +214,10 @@ npm run test:packaged
 `test:desktop` launches a hidden real Electron window with disposable data and
 checks initialized game UI, native bridge, disabled renderer Node access, no
 legacy-import controls, and hidden device controls before a code exists.
+It also checks separate Lounge navigation, return focus, keyboard tabs, Settings
+save export, and overflow-free layouts at 480, 960, 1,200 and 1,800 pixels, with
+the desktop width capped at 1,440 pixels. To capture disposable visual previews,
+run `node scripts/desktop-smoke.mjs --screenshots .tools/desktop-layout-preview`.
 `test:packaged` runs the same check against `release/win-unpacked/Byte Buddy.exe`
 after building on Windows. Neither uses personal saves or signs into GitHub.
 For an alternate build output directory, pass

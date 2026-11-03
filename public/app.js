@@ -23,7 +23,7 @@ const ACCESSORY_SLOTS = ["hat", "glasses", "headphones", "neck"];
 const MOOD_EXPR = { Happy: "smile", Excited: "excited", Curious: "curious", Sleepy: "sleepy", Relaxed: "normal" };
 
 let state = null;
-let ui = { tab: "home", customize: "evolution", category: "bodyColor", progress: "ticket", range: "all", ticketRange: "all",
+let ui = { view: "buddy", tab: "home", customize: "evolution", category: "bodyColor", progress: "ticket", range: "all", ticketRange: "all",
     challenges: { source: "all", status: "all", type: "all", sort: "default" },
     achievements: { source: "all", status: "all", type: "all", sort: "default" } };
 const chartModels = new Map();
@@ -370,7 +370,7 @@ function render() {
     if (ui.tab === "progress") renderProgress();
     if (ui.tab === "challenges") renderChallenges();
     if (ui.tab === "achievements") renderAchievements();
-    if (ui.tab === "lounge") loungeView?.render();
+    if (ui.view === "lounge") loungeView?.render();
     renderRoom();
     $("scene").setAttribute("aria-label", `${state.name}, a level ${p.level} ${p.stageName}, is ${state.care.sleeping ? "sleeping" : state.mood.toLowerCase()}. Click the buddy to pet; hold for one second to pick up, then drag and release. Enter or Space pets; Escape cancels.`);
 }
@@ -1491,6 +1491,24 @@ async function post(path, body, { quiet = false } = {}) {
     }
 }
 
+const viewScroll = { buddy: 0, lounge: 0 };
+function selectView(view) {
+    if (!["buddy", "lounge"].includes(view) || ui.view === view) return;
+    viewScroll[ui.view] = window.scrollY || 0;
+    ui.view = view;
+    const inLounge = view === "lounge";
+    $("buddyView").hidden = inLounge;
+    $("loungeView").hidden = !inLounge;
+    $("openLounge").hidden = inLounge;
+    $("settings").hidden = true;
+    $("settingsBtn").setAttribute("aria-expanded", "false");
+    if (inLounge) petMotion.reset();
+    else loungeView?.deactivate();
+    render();
+    $(inLounge ? "loungeTitle" : `tab-${ui.tab}`).focus({ preventScroll: true });
+    window.scrollTo?.(0, viewScroll[view]);
+}
+
 function selectTab(tab) {
     ui.tab = tab;
     for (const btn of document.querySelectorAll(".tabs button")) {
@@ -1499,7 +1517,8 @@ function selectTab(tab) {
         btn.tabIndex = on ? 0 : -1;
         $(`panel-${btn.dataset.tab}`).hidden = !on;
     }
-    render();
+    if (ui.view !== "buddy") selectView("buddy");
+    else render();
 }
 
 async function exportCurrentSave() {
@@ -1529,6 +1548,9 @@ async function exportCurrentSave() {
 
 function wire() {
     mountConnectionEditor();
+    $("openLounge").addEventListener("click", () => selectView("lounge"));
+    $("loungeBack").addEventListener("click", () => selectView("buddy"));
+    $("loungeConnections").addEventListener("click", () => selectTab("connections"));
     $("reviewConnections").onclick = () => { selectTab("connections"); $("tab-connections").focus(); };
     $("buddyTypes").addEventListener("click", (event) => {
         const button = event.target.closest("[data-evo-action]");

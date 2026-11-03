@@ -322,7 +322,7 @@ test("current-save export is explicit, authenticated, complete and cleans up its
     ui.run('CFG.token = "fixture-token"');
     assert.equal(ui.requests.length, 0);
     assert.equal(links.length, 0);
-    assert.match(html.slice(html.indexOf('<section id="panel-how"')), /id="exportCurrentSave"[^>]*>Export current save/);
+    assert.match(html.slice(html.indexOf('<div id="settings"'), html.indexOf('</header>')), /id="exportCurrentSave"[^>]*>Export current save/);
     assert.match(script, /exportCurrentSave"\)\.addEventListener\("click", exportCurrentSave\)/);
     const exporting = ui.run("exportCurrentSave()");
     assert.equal(ui.nodes.get("exportCurrentSave").disabled, true);

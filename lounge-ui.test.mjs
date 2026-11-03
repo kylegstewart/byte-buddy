@@ -6,14 +6,31 @@ import { SPEED, approach, clampPoint, createLoungeView, diffMembers, directionFo
 const html = readFileSync(new URL("./public/index.html", import.meta.url), "utf8");
 const app = readFileSync(new URL("./public/app.js", import.meta.url), "utf8");
 
-test("lounge tab and panel are wired with tab aria", () => {
-    assert.match(html, /<button type="button" role="tab" id="tab-lounge" aria-controls="panel-lounge" aria-selected="false" data-tab="lounge" tabindex="-1">Lounge<\/button>/);
-    assert.match(html, /<section id="panel-lounge" role="tabpanel" aria-labelledby="tab-lounge" class="panel lounge" hidden>/);
+test("lounge has a separate main view with entry, return, and connection navigation", () => {
+    assert.match(html, /id="openLounge"[^>]*aria-controls="loungeView"/);
+    assert.match(html, /<main id="loungeView"[^>]*aria-labelledby="loungeTitle"[^>]*hidden>/);
+    assert.match(html, /id="loungeBack"[^>]*aria-controls="buddyView"/);
+    assert.match(html, /id="loungeConnections"/);
+    assert.doesNotMatch(html, /id="(?:tab|panel)-(?:lounge|how)"/);
     assert.match(html, /id="loungeStatus"[^>]*role="status"[^>]*aria-live="polite"/);
     assert.match(html, /<svg id="loungeRoom"[^>]*viewBox="0 0 720 450"[^>]*shape-rendering="crispEdges"[^>]*tabindex="0"[^>]*aria-label=/);
     assert.match(app, /import \{ createLoungeView \} from "\.\/lounge\.js";/);
     assert.match(app, /addEventListener\("lounge"/);
     assert.match(app, /api\("\/api\/lounge"\)/);
+});
+
+test("leaving the Lounge view stops held movement without leaving the multiplayer session", async () => {
+    const { view, elements, calls, run } = harness();
+    view.update(connected([{ id: "1", login: "me", buddy: {}, x: 1600, y: 780 }]));
+    elements.loungeRoom.dispatch("keydown", { key: "ArrowRight" });
+    run(100);
+    view.deactivate();
+    await flush();
+    const position = { ...view.position };
+    run(500);
+    assert.deepEqual(view.position, position);
+    assert.equal(view.state.status, "connected");
+    assert.ok(calls.every(([path]) => path === "/api/lounge/move"));
 });
 
 test("pure helpers clamp, map arrow keys, smooth, and format status", () => {

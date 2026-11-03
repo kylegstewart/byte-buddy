@@ -105,7 +105,7 @@ test("Home sections, standalone tabs, evolution location and settings removal", 
     assert.match(home.slice(home.indexOf('id="ticketHomeTitle"')), /id="refreshBtn"/);
     const customize = html.slice(html.indexOf('<section id="panel-customize"'), html.indexOf('<section id="panel-progress"'));
     assert.ok(customize.indexOf('id="evoTrack"') < customize.indexOf('id="catTabs"'));
-    for (const tab of ["home", "customize", "progress", "challenges", "achievements", "how"]) {
+    for (const tab of ["home", "customize", "progress", "challenges", "achievements", "connections"]) {
         assert.match(html, new RegExp(`id="tab-${tab}"[^>]*aria-controls="panel-${tab}"`));
         assert.match(html, new RegExp(`id="panel-${tab}"[^>]*role="tabpanel"`));
     }
@@ -486,6 +486,74 @@ test("only painted buddy starts pointer care; touch capture, cancellation and ke
     ui.run('Object.assign(petMotion.body, { phase: "held", x: 80, y: 70, gripX: 5, gripY: -30, angle: 35 });');
     assert.equal(ui.run('petTransform()'), 'translate(80 70) translate(5 -30) rotate(35) scale(1.03 1.03) translate(-5 30)',
         'both rotation and pickup scaling are anchored at the exact local grip');
+});
+
+function navigationFixture() {
+    const ui = fixture();
+    const tabs = [...html.matchAll(/<button[^>]*data-tab="([^"]+)"/g)].map(([, tab]) => {
+        const button = ui.nodes.get(`tab-${tab}`);
+        button.dataset.tab = tab;
+        return tab;
+    });
+    ui.run(`document.querySelectorAll = selector => selector === ".tabs button" ? [${tabs.map(tab => `document.getElementById("tab-${tab}")`).join(",")}] : []; window.navigationDraws = []; window.deactivations = 0; render = () => window.navigationDraws.push(ui.view); loungeView = { deactivate: () => window.deactivations++ }; window.scrollY = 0; window.scrollTo = (_left, top) => { window.scrollY = top; };`);
+    return { ...ui, tabs };
+}
+
+test("separate Lounge navigation preserves the buddy tab, focus, scroll, and live session", () => {
+    const ui = navigationFixture();
+    assert.deepEqual(ui.tabs, ["home", "customize", "progress", "challenges", "achievements", "connections"]);
+    ui.run('selectTab("customize"); window.scrollY = 240; selectView("lounge")');
+    assert.equal(ui.run("ui.view"), "lounge");
+    assert.equal(ui.run("ui.tab"), "customize");
+    assert.equal(ui.nodes.get("buddyView").hidden, true);
+    assert.equal(ui.nodes.get("loungeView").hidden, false);
+    assert.equal(ui.nodes.get("openLounge").hidden, true);
+    assert.equal(ui.nodes.get("loungeTitle").focused, true);
+    assert.equal(ui.nodes.get("settings").hidden, true);
+    assert.equal(ui.nodes.get("settingsBtn").attributes["aria-expanded"], "false");
+    ui.run('window.scrollY = 60; selectView("buddy")');
+    assert.equal(ui.run("ui.view"), "buddy");
+    assert.equal(ui.run("ui.tab"), "customize");
+    assert.equal(ui.nodes.get("buddyView").hidden, false);
+    assert.equal(ui.nodes.get("loungeView").hidden, true);
+    assert.equal(ui.nodes.get("openLounge").hidden, false);
+    assert.equal(ui.nodes.get("tab-customize").focused, true);
+    assert.equal(ui.run("window.scrollY"), 240);
+    assert.equal(ui.run("window.deactivations"), 1);
+    ui.run('selectView("lounge")');
+    assert.equal(ui.run("window.scrollY"), 60);
+});
+
+test("connection navigation exits the Lounge and keeps the normal tab aria state consistent", () => {
+    const ui = navigationFixture();
+    ui.run('selectView("lounge"); selectTab("connections")');
+    assert.equal(ui.run("ui.view"), "buddy");
+    assert.equal(ui.run("ui.tab"), "connections");
+    assert.equal(ui.nodes.get("tab-connections").focused, true);
+    for (const tab of ui.tabs) {
+        const selected = tab === "connections";
+        assert.equal(ui.nodes.get(`tab-${tab}`).attributes["aria-selected"], String(selected));
+        assert.equal(ui.nodes.get(`tab-${tab}`).tabIndex, selected ? 0 : -1);
+        assert.equal(ui.nodes.get(`panel-${tab}`).hidden, !selected);
+    }
+});
+
+test("unknown and repeated view switches do not redraw or change navigation", () => {
+    const ui = navigationFixture();
+    ui.run('selectView("buddy"); selectView("how"); selectView("unknown")');
+    assert.equal(ui.run("ui.view"), "buddy");
+    assert.equal(ui.run("window.navigationDraws.length"), 0);
+    ui.run('selectView("lounge"); selectView("lounge")');
+    assert.equal(ui.run("window.navigationDraws.length"), 1);
+    assert.equal(ui.run("window.deactivations"), 0);
+});
+
+test("desktop content is fluid up to 1440px and wide layouts leave the canvas extension unchanged", () => {
+    const css = readFileSync(new URL("./public/app.css", import.meta.url), "utf8");
+    assert.match(css, /\.app\s*\{[^}]*max-width: 760px;/);
+    assert.match(css, /html\[data-desktop\] \.app\s*\{[^}]*width: 100%;[^}]*max-width: 1440px;/);
+    assert.match(css, /@media \(min-width: 1100px\)\s*\{\s*html\[data-desktop\] \.buddy-view[^}]*grid-template-columns:/);
+    assert.match(css, /@media \(min-width: 960px\)\s*\{\s*html\[data-desktop\] \.lounge-layout[^}]*grid-template-columns:/);
 });
 
 function evolutionFixture() {

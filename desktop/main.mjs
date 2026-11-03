@@ -103,7 +103,7 @@ async function boot() {
     const config = configuration.read();
     runtime = createDesktopRuntime({ root, config, authorizeLounge });
     appUrl = await runtime.start();
-    window = new BrowserWindow({ title: "Byte Buddy", icon: join(here, "assets", "icon.png"), width: 960, height: 900, minWidth: 480, minHeight: 560, show: false,
+    window = new BrowserWindow({ title: "Byte Buddy", icon: join(here, "assets", "icon.png"), width: 1200, height: 900, minWidth: 480, minHeight: 560, show: false,
         webPreferences: { preload: join(here, "preload.cjs"), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, navigateOnDragDrop: false } });
     const browserSession = window.webContents.session;
     browserSession.setPermissionRequestHandler((_contents, _permission, respond) => respond(false));
@@ -124,8 +124,8 @@ async function boot() {
     window.once("ready-to-show", () => { if (!process.argv.includes("--smoke-test")) window.show(); });
     await window.loadURL(appUrl);
     if (process.argv.includes("--smoke-test")) {
-        const result = await window.webContents.executeJavaScript(`new Promise((resolve, reject) => { const deadline = Date.now() + 15000; const check = () => { if (!document.getElementById('app')?.hasAttribute('aria-busy') && document.getElementById('desktopStatus')?.textContent.startsWith('Desktop ') && !document.getElementById('desktopConnections')?.hidden) resolve({ name: document.getElementById('buddyName').textContent, desktopBridge: typeof window.byteBuddyDesktop?.status === 'function', nodeUnavailable: typeof require === 'undefined' && typeof process === 'undefined', desktop: window.BUDDY_CONFIG.desktop, title: document.title, freshStart: !document.getElementById('desktopImportFolder') && typeof window.byteBuddyDesktop.importSave === 'undefined', deviceHidden: document.getElementById('desktopGithubDevice').hidden && document.getElementById('desktopGithubCode').hidden }); else if (Date.now() > deadline) reject(new Error('Desktop UI did not initialize')); else setTimeout(check, 100); }; check(); })`);
-        if (!result.desktopBridge || !result.nodeUnavailable || !result.desktop) throw new Error("Desktop security smoke test failed.");
+        const { checkDesktopWindow } = await import("./smoke.mjs");
+        const result = await checkDesktopWindow(window, process.env.BYTE_BUDDY_SMOKE_SCREENSHOTS);
         writeFileSync(join(root, "smoke.json"), JSON.stringify(result, null, 2));
         process.stdout.write(`BYTE_BUDDY_SMOKE_OK ${JSON.stringify(result)}\n`);
         app.quit();

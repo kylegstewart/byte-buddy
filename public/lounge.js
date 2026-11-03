@@ -419,6 +419,6 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     renderControls();
     measure();
     applyCamera();
-    return { update, render, unavailable, sendMove, get state() { return lounge; }, get available() { return available; },
+    return { update, render, unavailable, sendMove, deactivate: stopMoving, get state() { return lounge; }, get available() { return available; },
         get camera() { return { ...cam }; }, get view() { return { ...view }; }, get position() { return selfPos && { ...selfPos }; } };
 }
