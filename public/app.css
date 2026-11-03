@@ -372,9 +372,10 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
 .lounge-world .lounge-room { height: clamp(280px, calc(100dvh - 240px), 760px); }
 .lounge-room-label { fill: rgba(255, 255, 255, .85); paint-order: stroke; stroke: rgba(20, 24, 32, .75); stroke-width: 3px; font-size: 15px; font-family: ui-monospace, Consolas, monospace; letter-spacing: 1px; pointer-events: none; }
 .lounge-room:focus-visible { outline: 2px solid var(--db-focus, var(--db-accent)); outline-offset: 2px; }
-.lounge-label { fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .6); stroke-width: 1.2px; font-family: ui-monospace, Consolas, monospace; }
+.lounge-label, .lounge-username { paint-order: stroke; stroke: rgba(0, 0, 0, .6); stroke-width: 1.2px; font-family: ui-monospace, Consolas, monospace; }
+.lounge-label { fill: #9edcff; }
 .lounge-self .lounge-label { fill: #ffd84a; }
-.lounge-self-marker { fill: #ffd84a; opacity: .8; }
+.lounge-username { fill: #d2d9e3; }
 .lounge-members { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .lounge-voice select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 8px; border: 1px solid var(--db-border); border-radius: 6px; background: var(--db-bg); color: var(--db-fg); font: inherit; }
 .lounge-voice .section-title { margin: 0; }

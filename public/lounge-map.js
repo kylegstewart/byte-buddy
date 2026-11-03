@@ -71,7 +71,7 @@ export const ROWS = GRID.length;
 export const COLS = GRID[0].length;
 export const WORLD = { width: COLS * TILE, height: ROWS * TILE };
 export const SPAWN = { x: 1600, y: 780 };
-export const DEAD_ZONE = { x: 0.6, y: 0.6 };
+export const DEAD_ZONE = { x: 0.3, y: 0.3 };
 export const LABELS = [
     { text: "Bullpen", x: 950, y: 375 },
     { text: "Bullpen", x: 350, y: 635 },

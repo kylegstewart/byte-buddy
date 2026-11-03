@@ -5,6 +5,7 @@ import { SPEED, approach, clampPoint, createLoungeView, diffMembers, directionFo
 
 const html = readFileSync(new URL("./public/index.html", import.meta.url), "utf8");
 const app = readFileSync(new URL("./public/app.js", import.meta.url), "utf8");
+const css = readFileSync(new URL("./public/app.css", import.meta.url), "utf8");
 
 test("lounge has a separate main view with entry, return, and connection navigation", () => {
     assert.match(html, /id="openLounge"[^>]*aria-controls="loungeView"/);
@@ -134,6 +135,29 @@ test("update adds, smooths remote moves in place, and removes members keyed by i
     view.update(connected([{ id: "1", login: "me", buddy: { stage: 1 }, x: 1600, y: 780 }]));
     run(32);
     assert.deepEqual(layer.children.map((g) => g.attrs["data-id"]), ["1"]);
+});
+
+test("buddies are larger with names above smaller usernames and no self bar", () => {
+    const { view, layer } = harness();
+    const members = [
+        { id: "1", login: "me", buddy: { name: "Bolt" }, x: 1600, y: 780 },
+        { id: "2", login: "pal", buddy: { name: "<Spark>" }, x: 1650, y: 770 },
+    ];
+    view.update(connected(members));
+    const self = layer.children.find((node) => node.attrs["data-id"] === "1");
+    const other = layer.children.find((node) => node.attrs["data-id"] === "2");
+    for (const node of [self, other]) {
+        assert.match(node.children[0].innerHTML, /<svg[^>]*width="64"/);
+        assert.doesNotMatch(node.children[1].innerHTML, /<rect|lounge-self-marker/);
+    }
+    assert.match(self.children[1].innerHTML, /class="lounge-label"[^>]*y="18"[^>]*font-size="12"[^>]*>Bolt<\/text><text class="lounge-username"[^>]*y="30"[^>]*font-size="8"[^>]*>me<\/text>/);
+    assert.match(other.children[1].innerHTML, />&lt;Spark><\/text>/);
+    assert.match(css, /\.lounge-label \{ fill: #9edcff; \}/);
+    assert.match(css, /\.lounge-self \.lounge-label \{ fill: #ffd84a; \}/);
+    view.update(connected([{ ...members[0], buddy: { name: "Nova" } }, members[1]]));
+    assert.match(self.children[1].innerHTML, />Nova<\/text>/, "renaming updates the existing label");
+    view.update(connected([{ ...members[0], buddy: {} }]));
+    assert.match(self.children[1].innerHTML, />Byte Buddy<\/text>/, "unnamed buddies have a fallback name");
 });
 
 test("walking switches the sprite to animated walk frames and back to standing", () => {

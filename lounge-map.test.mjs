@@ -109,6 +109,15 @@ test("dead zone holds the camera still, then scrolls minimally toward the edge",
     assert.deepEqual(cameraFollow(moved, right, view), moved, "settled: stopping does not recenter");
 });
 
+test("camera follows before the buddy reaches the outer screen edges", () => {
+    const view = { width: 720, height: 450 };
+    const cam = centerCamera(SPAWN, view);
+    const target = { x: SPAWN.x + view.width * 0.2, y: SPAWN.y + view.height * 0.2 };
+    const moved = cameraFollow(cam, target, view);
+    assert.ok(moved.x > cam.x, "horizontal tracking starts within 20% of center");
+    assert.ok(moved.y > cam.y, "vertical tracking starts within 20% of center");
+});
+
 test("camera clamps to world edges and settles without jitter", () => {
     const view = { width: 720, height: 450 };
     assert.deepEqual(cameraFollow({ x: 0, y: 0 }, { x: 5, y: 5 }, view), { x: 0, y: 0 });

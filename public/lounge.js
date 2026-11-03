@@ -5,7 +5,7 @@ import { createLoungeVoiceView } from "./lounge-voice.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 export const ROOM = { width: WORLD.width, height: WORLD.height, minX: 0, maxX: WORLD.width, minY: 0, maxY: WORLD.height };
 export const SPEED = 140;
-const BUDDY_WIDTH = 32;
+const BUDDY_WIDTH = 64;
 const SEND_INTERVAL_MS = 100;
 const REMOTE_SPEED = SPEED * 1.25;
 const SNAP_DISTANCE = 120;
@@ -152,9 +152,9 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         return selfId === undefined || selfId === null ? null : (lounge.members || []).find((member) => String(member.id) === String(selfId)) || null;
     }
 
-    function chromeMarkup(member, self) {
-        const marker = self ? '<rect class="lounge-self-marker" x="-14" y="-1" width="28" height="3"/>' : "";
-        return `${marker}<circle class="lounge-voice-ring" cx="21" cy="-26" r="5" aria-hidden="true"/><text class="lounge-label" x="0" y="14" font-size="10" text-anchor="middle">${esc(member.login)}</text>`;
+    function chromeMarkup(member) {
+        const name = member.buddy?.name?.trim() || "Byte Buddy";
+        return `<circle class="lounge-voice-ring" cx="37" cy="-40" r="5" aria-hidden="true"/><text class="lounge-label" x="0" y="18" font-size="12" text-anchor="middle">${esc(name)}</text><text class="lounge-username" x="0" y="30" font-size="8" text-anchor="middle">${esc(member.login)}</text>`;
     }
 
     function spriteMarkup(buddy, pose, frame, look, still) {
@@ -270,9 +270,9 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
             entry.target = isSelf ? selfPos : target;
             entry.self = isSelf;
             if (!raf) place(entry, entry.target, time);
-            const key = JSON.stringify([member.login, isSelf]);
+            const key = JSON.stringify([member.login, member.buddy?.name, isSelf]);
             if (entry.key !== key) {
-                entry.chrome.innerHTML = chromeMarkup(member, isSelf);
+                entry.chrome.innerHTML = chromeMarkup(member);
                 entry.el.setAttribute("class", isSelf ? "lounge-member lounge-self" : "lounge-member");
                 entry.key = key;
             }
