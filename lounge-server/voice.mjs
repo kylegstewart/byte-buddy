@@ -24,6 +24,22 @@ const ICE_URLS = new Set([
     "turn:turn.cloudflare.com:3478?transport=tcp",
     "turns:turn.cloudflare.com:5349?transport=tcp", "turns:turn.cloudflare.com:443?transport=tcp",
 ]);
+const PUBLIC_ERROR_CODES = new Set([
+    "unauthorized", "not_found", "decoding_error", "invalid_params", "payload_too_large",
+    "session_error", "invalid_session_description", "not_found_track_error", "empty_track_error",
+    "repeated_local_track_error", "update_track_error", "close_track_error", "retryable_transient_error",
+    "temporarily_unavailable_error", "transport_unavailable_error", "backend_error", "internal_error",
+]);
+
+function diagnostic(operation, reason, response = {}) {
+    const codes = [response.body?.errorCode, ...(Array.isArray(response.body?.tracks) ?
+        response.body.tracks.slice(0, MAX_PEERS).map((track) => track?.errorCode) : [])].filter(Boolean);
+    console.error("lounge: voice diagnostic", JSON.stringify({
+        operation, reason,
+        ...(Number.isInteger(response.status) ? { status: response.status } : {}),
+        ...(codes.length ? { errorCodes: [...new Set(codes.map((code) => PUBLIC_ERROR_CODES.has(code) ? code : "unknown"))] } : {}),
+    }));
+}
 
 export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, timeoutMs = 8_000 }) {
     const voices = new Map();
@@ -48,17 +64,33 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
     const ensureActive = (voice) => { if (!active(voice)) throw staleError(); };
 
     async function api(path, body, method = "POST", turn = false) {
+        const operation = turn ? "turn_credentials" : path.endsWith("/sessions/new") ? "session_create" :
+            path.endsWith("/tracks/new") ? "tracks_new" : path.endsWith("/tracks/close") ? "tracks_close" :
+            path.endsWith("/renegotiate") ? "renegotiate" : method === "GET" ? "session_inspect" : "unknown";
+        let status;
+        let signal;
+        let reason = "network_error";
         try {
+            signal = AbortSignal.timeout(timeoutMs);
             const response = await fetchImpl(API + path, {
-                method, redirect: "error", signal: AbortSignal.timeout(timeoutMs),
+                method, redirect: "error", signal,
                 headers: { Authorization: "Bearer " + (turn ? env.CF_TURN_API_TOKEN : env.CF_REALTIME_APP_SECRET),
                     "Content-Type": "application/json" },
                 ...(body === undefined ? {} : { body: JSON.stringify(body) }),
             });
+            status = response.status;
+            reason = "response_read_error";
             const text = await response.text();
-            if (text.length > 256 * 1024) throw upstreamError();
-            return { ok: response.ok, status: response.status, body: text ? JSON.parse(text) : {} };
-        } catch {
+            if (text.length > 256 * 1024) { reason = "response_too_large"; throw upstreamError(); }
+            reason = "invalid_json";
+            const result = { ok: response.ok, status, body: text ? JSON.parse(text) : {} };
+            if (!result.body || typeof result.body !== "object" || Array.isArray(result.body)) diagnostic(operation, "invalid_response", result);
+            else if (!result.ok || result.body.errorCode) diagnostic(operation, "request_error", result);
+            else if (Array.isArray(result.body.tracks) && result.body.tracks.some((track) =>
+                track?.errorCode && !(operation === "tracks_close" && track.errorCode === "close_track_error"))) diagnostic(operation, "item_error", result);
+            return result;
+        } catch (error) {
+            diagnostic(operation, signal?.aborted || error?.name === "TimeoutError" ? "timeout" : reason, { status });
             throw upstreamError();
         }
     }
@@ -163,12 +195,19 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
                     const result = await api(resourcePath(resource) + "/tracks/close", {
                         force: true, tracks: mids.map((mid) => ({ mid })),
                     }, "PUT");
-                    if (!success(result) || !Array.isArray(result.body.tracks)) throw upstreamError();
+                    if (!success(result) || !Array.isArray(result.body.tracks) ||
+                        result.body.tracks.some((track) => !track || typeof track !== "object" || Array.isArray(track))) {
+                        if (success(result)) diagnostic("tracks_close", "invalid_response", result);
+                        throw upstreamError();
+                    }
                     for (const mid of mids) {
                         const item = result.body.tracks.find((track) => track.mid === mid);
                         if (item && (!item.errorCode || item.errorCode === "close_track_error")) resource.mids.delete(mid);
                     }
-                    if (resource.mids.size) throw upstreamError();
+                    if (resource.mids.size) {
+                        diagnostic("tracks_close", "incomplete_close_result", result);
+                        throw upstreamError();
+                    }
                     confirmed = !resource.uncertain;
                     break;
                 } catch {
@@ -180,7 +219,9 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
                 blocked = true;
                 compromise(resource);
                 for (const voice of [...voices.values()]) invalidate(voice);
-                console.error("lounge: voice cleanup unconfirmed; voice disabled until server restart");
+                console.error("lounge: voice cleanup unconfirmed; voice disabled until server restart", JSON.stringify({
+                    role: resource.role, uncertainAllocation: resource.uncertain, remainingTracks: resource.mids.size,
+                }));
             } else if (!resource.inFlight) {
                 resources.delete(resource);
             }
@@ -205,7 +246,10 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
     async function allocate(resource, tracks, sessionDescription) {
         try {
             const session = await api(appPath + "/sessions/new");
-            if (!success(session) || !validId(session.body.sessionId)) throw upstreamError();
+            if (!success(session) || !validId(session.body.sessionId)) {
+                if (success(session)) diagnostic("session_create", "invalid_response", session);
+                throw upstreamError();
+            }
             resource.sessionId = session.body.sessionId;
             if (resource.retired || !active(resource.voice)) throw staleError();
             for (const track of tracks) if (track.mid) resource.mids.add(track.mid);
@@ -222,6 +266,8 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
             if (!result.ok || !Array.isArray(result.body?.tracks)) resource.uncertain = true;
             if (!success(result) || !Array.isArray(result.body.tracks) ||
                 result.body.tracks.length !== tracks.length || result.body.tracks.some((track) => !track || track.errorCode)) {
+                if (success(result) && (!Array.isArray(result.body.tracks) ||
+                    result.body.tracks.length !== tracks.length || result.body.tracks.some((track) => !track))) diagnostic("tracks_new", "invalid_response", result);
                 throw upstreamError();
             }
             return result.body;

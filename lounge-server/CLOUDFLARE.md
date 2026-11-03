@@ -389,8 +389,12 @@ rate limiting `429 voice_rate_limited`, generic upstream failure
   tracks also retired, providing a server-side source cutoff while retrying.
   Exhausted or ambiguous cleanup disables further voice globally, closes other
   known voice resources, retains unresolved resource state in memory, and logs
-  only a fixed operational warning, never tokens, SDP, or upstream error text.
-  Presence continues. A normal shutdown makes one final bounded cleanup pass.
+  an operational warning with the resource role, allocation uncertainty, and
+  remaining track count. Sanitized failure diagnostics include only the operation,
+  failure category, HTTP status when available, and allowlisted public error codes.
+  Unknown codes are replaced with `unknown`; tokens, resource IDs, SDP, response
+  bodies, and upstream error descriptions are never logged. Presence continues.
+  A normal shutdown makes one final bounded cleanup pass.
 - A timeout/lost response is not proof an allocation failed; inspecting an empty
   SFU session is not proof an in-flight request cannot finish later. Ambiguous
   allocation cleanup remains unresolved and disables voice conservatively. There
@@ -413,6 +417,38 @@ rate limiting `429 voice_rate_limited`, generic upstream failure
   Issued credentials can remain usable until TTL expiry; they are not SFU
   publication/room access credentials. GitHub tokens only authenticate against
   GitHub and never go to the SFU/TURN service.
+
+### Diagnosing a cleanup lockout
+
+`503 voice_unavailable` on `join` means an earlier operation already disabled
+voice in the hosted relay. That join does not reach TURN credential generation
+or client ICE gathering. Restarting or updating the desktop cannot clear it.
+
+Inspect the **Lounge container application logs**, not just the Worker's request
+status. In Cloudflare's **Observability > Logs**, select the **Containers**
+dataset rather than HTTP requests or security events, then filter to the Lounge
+and the time of the first failure. Worker application logs are also available
+under Workers & Pages / the Lounge Worker / Observability.
+Find the first `lounge: voice diagnostic` entry before
+`lounge: voice cleanup unconfirmed`. For example:
+
+```text
+lounge: voice diagnostic {"operation":"tracks_new","reason":"timeout"}
+lounge: voice cleanup unconfirmed; voice disabled until server restart {"role":"publisher","uncertainAllocation":true,"remainingTracks":0}
+```
+
+`tracks_new` with `timeout` means an allocation outcome is unknown, even when the
+remaining track count is zero. `tracks_close` diagnostics identify failed close
+requests, including per-track errors inside HTTP 200 responses. Check the HTTP
+status and public error code against Cloudflare's error reference; do not infer
+that a client network restriction caused a server-to-SFU API failure.
+
+Older deployments log only the fixed cleanup warning and cannot reconstruct the
+original upstream failure. After accounting for existing resources using the
+recovery guidance above, deploy the updated relay to a fresh container process,
+then capture its sanitized diagnostics if the failure recurs. A desktop rebuild
+alone does not deploy this server change. Do not remove the lockout or reset it
+automatically to recover service.
 
 Backend tests (mock Cloudflare transport; no live credentials):
 

@@ -344,6 +344,110 @@ test("exhausted cleanup disables new voice, retains unresolved work, and keeps e
     cf.override(undefined);
 });
 
+test("upstream diagnostics log only allowlisted public codes, operation and HTTP status", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    for (const [code, expected] of [["unauthorized", "unauthorized"], ["app-secret", "unknown"]]) {
+        const { add, join, cf } = fixture(context);
+        cf.override(() => response({ errorCode: code, errorDescription: "private-sdp turn-token",
+            sessionId: "private-session", credential: "short-password" }, 403));
+        await assert.rejects(join(add(1)), { status: 502, code: "voice_upstream" });
+        const call = logger.mock.calls.at(-1);
+        assert.equal(call.arguments[0], "lounge: voice diagnostic");
+        assert.deepEqual(JSON.parse(call.arguments[1]), {
+            operation: "turn_credentials", reason: "request_error", status: 403, errorCodes: [expected],
+        });
+    }
+    assert.doesNotMatch(JSON.stringify(logger.mock.calls.map((call) => call.arguments)),
+        /app-secret|turn-token|private-sdp|private-session|short-password/);
+});
+
+test("upstream diagnostics distinguish timeouts, network errors and unreadable responses without logging their text", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const cases = [
+        { reason: "timeout", run() { throw Object.assign(new Error("app-secret private-sdp"), { name: "TimeoutError" }); } },
+        { reason: "network_error", run() { throw new TypeError("app-secret private-sdp"); } },
+        { reason: "invalid_json", status: 502, run: () => new Response("app-secret private-sdp", { status: 502 }) },
+        { reason: "invalid_response", status: 200, run: () => response(["app-secret private-sdp"]) },
+        { reason: "response_too_large", status: 200, run: () => new Response("app-secret private-sdp" + "x".repeat(256 * 1024)) },
+        { reason: "response_read_error", status: 502, run: () => ({ status: 502, async text() { throw new Error("app-secret private-sdp"); } }) },
+    ];
+    for (const entry of cases) {
+        const { add, join, cf } = fixture(context);
+        cf.override(entry.run);
+        await assert.rejects(join(add(1)), { code: "voice_upstream" });
+        assert.deepEqual(JSON.parse(logger.mock.calls.at(-1).arguments[1]), {
+            operation: "turn_credentials", reason: entry.reason, ...(entry.status ? { status: entry.status } : {}),
+        });
+    }
+    assert.doesNotMatch(JSON.stringify(logger.mock.calls.map((call) => call.arguments)), /app-secret|private-sdp/);
+});
+
+test("malformed allocation results are diagnosed before the conservative cleanup lockout", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const { add, join, publish, cf } = fixture(context);
+    const person = add(1);
+    await join(person);
+    cf.override((call) => call.url.endsWith("/tracks/new") ? response({}) : undefined);
+    await assert.rejects(publish(person), { code: "voice_upstream" });
+    assert.deepEqual(JSON.parse(logger.mock.calls[0].arguments[1]), {
+        operation: "tracks_new", reason: "invalid_response", status: 200,
+    });
+    const warning = logger.mock.calls.find((call) => call.arguments[0].includes("cleanup unconfirmed"));
+    assert.deepEqual(JSON.parse(warning.arguments[1]), { role: "publisher", uncertainAllocation: true, remainingTracks: 0 });
+    await assert.rejects(join(person), { status: 503, code: "voice_unavailable" });
+    cf.override(undefined);
+});
+
+test("cleanup diagnostics identify failed or malformed close results without exposing resource identifiers", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const cases = [
+        { reason: "item_error", result: (call) => ({ tracks: call.body.tracks.map((track) => ({
+            ...track, errorCode: "internal_error", errorDescription: "app-secret private-sdp",
+        })) }) },
+        { reason: "invalid_response", result: () => ({}) },
+        { reason: "invalid_response", result: () => ({ tracks: [null] }) },
+        { reason: "incomplete_close_result", result: () => ({ tracks: [] }) },
+    ];
+    for (const entry of cases) {
+        const start = logger.mock.calls.length;
+        const { add, join, publish, signal, cf } = fixture(context);
+        const person = add(1);
+        await join(person);
+        await publish(person);
+        cf.override((call) => call.url.endsWith("/tracks/close") ? response(entry.result(call)) : undefined);
+        await assert.rejects(signal(person, "leave"), { status: 503, code: "voice_unavailable" });
+        const calls = logger.mock.calls.slice(start);
+        const diagnostics = calls.filter((call) => call.arguments[0] === "lounge: voice diagnostic")
+            .map((call) => JSON.parse(call.arguments[1]));
+        assert.ok(diagnostics.some((result) => result.operation === "tracks_close" && result.reason === entry.reason && result.status === 200));
+        if (entry.reason === "item_error") assert.ok(diagnostics.some((result) => result.errorCodes?.includes("internal_error")));
+        const warning = calls.find((call) => call.arguments[0].includes("cleanup unconfirmed"));
+        assert.deepEqual(JSON.parse(warning.arguments[1]), { role: "publisher", uncertainAllocation: false, remainingTracks: 1 });
+        assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).length, 3);
+        await assert.rejects(join(person), { code: "voice_unavailable" });
+        cf.override(undefined);
+    }
+    assert.doesNotMatch(JSON.stringify(logger.mock.calls.map((call) => call.arguments)),
+        /app-secret|private-sdp|sfu-session-|lounge-session-|trackName|short-password/);
+});
+
+test("already-closed track acknowledgements do not produce failure diagnostics or disable voice", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const { add, join, publish, signal, cf } = fixture(context);
+    const person = add(1);
+    await join(person);
+    await publish(person);
+    for (const tracks of cf.sessions.values()) tracks.clear();
+    cf.override((call) => call.url.endsWith("/tracks/close") ? response({
+        tracks: call.body.tracks.map((track) => ({ ...track, errorCode: "close_track_error" })),
+    }) : undefined);
+    await signal(person, "leave");
+    await join(person);
+    assert.equal(cf.live(), 0);
+    assert.equal(logger.mock.calls.length, 0);
+    cf.override(undefined);
+});
+
 test("room removal, expiry, and server shutdown close all published and receiver tracks", async (context) => {
     const { add, join, publish, signal, service, rooms, cf } = fixture(context);
     const listener = add(1); const publisher = add(2);
