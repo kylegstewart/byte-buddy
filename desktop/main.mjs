@@ -7,10 +7,12 @@ import { createDesktopRuntime } from "./runtime.mjs";
 import { createGitHubAuth } from "./github-auth.mjs";
 import { createDesktopUpdater } from "./updates.mjs";
 import { isAppDocument, isMicrophonePermission, safeExternalUrl } from "./security.mjs";
+import { configureSmokeMedia } from "./smoke-config.mjs";
 import { copilotHome, readServerConfig } from "../itsource.mjs";
 
 app.setName("Byte Buddy");
 app.enableSandbox();
+configureSmokeMedia(app.commandLine, process.argv);
 const here = dirname(fileURLToPath(import.meta.url));
 const root = process.env.BYTE_BUDDY_DATA_DIR ? resolve(process.env.BYTE_BUDDY_DATA_DIR) : join(app.getPath("appData"), "Byte Buddy Desktop");
 mkdirSync(root, { recursive: true });

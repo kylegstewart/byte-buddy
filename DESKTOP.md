@@ -284,8 +284,12 @@ after building on Windows. Neither uses personal saves or signs into GitHub.
 The desktop checks also exercise real Chromium WebRTC sender/receiver
 negotiation, push-to-talk, audio-level indicators, deafen, and full cleanup with
 silent synthetic audio and host-only local ICE. No real microphone or Cloudflare
-connection is used. They verify real microphone access is denied outside a
-connected Lounge. These checks do not replace two-user testing against the live
+connection is used. Smoke mode supplies Chromium virtual capture devices so the
+permission check does not depend on a physical microphone on Windows CI runners.
+It does not auto-grant microphone access or bypass the application's permission
+handlers: capture must still fail with NotAllowedError outside a connected
+Lounge. Ordinary launches use real devices and the same consent policy as before.
+These checks do not replace two-user testing against the live
 SFU/TURN deployment on the intended network.
 For an alternate build output directory, pass
 `node scripts/desktop-smoke.mjs --packaged --output release/github-signin-fix`.

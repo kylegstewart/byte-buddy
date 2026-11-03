@@ -37,7 +37,11 @@ export async function checkVoiceWindow(window) {
         try {
             const unexpected = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             unexpected.getTracks().forEach((track) => track.stop());
-        } catch (error) { deniedWithoutLounge = error.name === "NotAllowedError"; }
+        } catch (error) {
+            if (error.name !== "NotAllowedError") throw new Error("Microphone permission smoke check expected NotAllowedError with a virtual input, received " + error.name + ": " + error.message);
+            deniedWithoutLounge = true;
+        }
+        if (!deniedWithoutLounge) throw new Error("Microphone permission was unexpectedly granted outside a connected Lounge.");
         try {
             const source = new SilentAudio();
             await source.resume();
