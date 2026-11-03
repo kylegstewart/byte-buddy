@@ -1,16 +1,45 @@
-name: Build desktop installers
+name: Build and release desktop
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.release.outputs.build }}
+      publish: ${{ steps.release.outputs.publish }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check release version
+        id: release
+        run: node scripts/desktop-release.mjs plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   windows:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -18,14 +47,36 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:desktop
-      - run: npm run dist
+      - run: npm run dist -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - run: npm run test:packaged
       - uses: actions/upload-artifact@v4
         with:
-          name: byte-buddy-windows
+          name: byte-buddy-windows-${{ needs.prepare.outputs.version }}
           path: |
             release/*.exe
             release/*.blockmap
           if-no-files-found: error
+
+  publish:
+    needs: [prepare, windows]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: byte-buddy-windows-${{ needs.prepare.outputs.version }}
+          path: release
+      - name: Publish tested Windows installers
+        run: node scripts/desktop-release.mjs publish
+        env:
+          GH_TOKEN: ${{ github.token }}

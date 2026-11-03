@@ -19,10 +19,11 @@ requires GitHub CLI (`gh`); the ticket integration requires the same trusted
 local MCP command and network access as before, for example Docker. Missing
 integrations do not remove your existing progress or prevent offline play/demo.
 
-These are **unsigned development builds**, not published GitHub releases.
+Local builds and the automated release workflow currently produce **unsigned
+executables**.
 Windows reputation checks and company installation policies may warn or prevent
-running them. Do not bypass company controls. Signing and a reviewed release
-process remain distribution tasks; the app does not claim an approved publisher.
+running them. Do not bypass company controls. Signing remains a separate
+distribution task; the app does not claim an approved publisher.
 
 Open **Connections** for data-folder access, GitHub sign-in,
 and ticket MCP configuration. Standard gameplay and analytics remain in their
@@ -194,7 +195,10 @@ solve that restriction.
   releases manually and opens a Windows installer download in the system
   browser. It never runs the Copilot gist/in-place updater, installs silently,
   or changes a save. A release must contain a Windows `.exe` asset before it is
-  offered. No desktop release has been published as part of this migration.
+  offered, with a stable numeric tag such as `v1.3.1` that is newer than the
+  installed app. Commits, Actions artifacts, draft releases, and prereleases do
+  not trigger an update. The repository/releases must be publicly readable;
+  this check does not authenticate to private repositories.
 - Uninstalling retains the app's data directory. Back up the full directory or
   export a complete current save before moving machines or replacing builds.
 
@@ -227,12 +231,79 @@ and portable executables. Packaging is configured for Windows; macOS/Linux
 installers, signing/notarization, and cross-platform device testing are not
 claimed by this migration. Do not commit generated `release/` or dependencies.
 
-The manual **Build desktop installers** GitHub Actions workflow performs tests,
-both smoke checks, and packaging, then uploads build artifacts. It does not
-publish releases, deploy Cloudflare, or require application credentials. The
-existing gist publishing workflow is unchanged. For a future desktop release,
-keep `package.json`/lockfile and `version.json` versions aligned, run validation,
-and publish reviewed/signed installer assets as a separate release decision.
+## Publishing desktop updates
+
+The **Build and release desktop** workflow in `.github/workflows/desktop.yml`
+runs on pushes/merges to `main`. If the app version is not already published,
+it runs the tests, real Electron smoke check, Windows packaging, and packaged
+smoke check, then publishes a stable GitHub Release such as `v1.3.1` with the
+Setup installer, portable app, and installer blockmap. Release notes are
+generated from the repository history, with the unsigned-build notice included.
+Your computer does not need to remain on while GitHub builds the release.
+
+### One-time setup
+
+1. Commit the desktop workflow, release/version scripts, and related tests and
+   documentation to the repository. GitHub Actions must be enabled and allowed
+   to run the GitHub-provided actions used by the workflow (repository
+   **Settings -> Actions -> General**).
+2. The workflow uses GitHub's built-in `GITHUB_TOKEN`. Only its final publishing
+   job requests `contents: write`; build jobs remain read-only and do not retain
+   checkout credentials. No new PAT, GitHub OAuth secret, Cloudflare credential,
+   or local GitHub sign-in is needed for desktop releases. Repository or
+   organization policies and tag rules must allow that publishing job to create
+   releases/tags; review those restrictions if GitHub returns a permission error.
+3. Keep the repository and release assets publicly readable for the current
+   desktop updater. Its source is `kylegstewart/byte-buddy` in
+   `desktop/updates.mjs`; a fork would need to change that source.
+
+### Release an update
+
+From the repository root, after making and reviewing your changes:
+
+```powershell
+npm.cmd version patch --no-git-tag-version
+npm.cmd test
+```
+
+For example, this bumps `1.3.0` to `1.3.1`. Use `minor` or `major` instead
+for larger releases. npm updates `package.json` and `package-lock.json`; the
+new `version` lifecycle script synchronizes `version.json` while preserving its
+gist ID. The `--no-git-tag-version` flag leaves committing/tagging to you and CI:
+the command does not commit, create a tag, or push anything. Do not skip npm's
+lifecycle scripts, and use stable `major.minor.patch` versions only.
+
+Commit all three version files together with the app changes, then push or merge
+to `main`. Watch **Actions -> Build and release desktop**; when it succeeds,
+the installers appear under **Releases**. A first eligible push can publish the
+current version if no release exists, but someone already running that same
+version will not see an update until a higher version is published.
+
+**This does not increment the version on every push.** Further pushes with an
+already published version skip the desktop build/release rather than replacing
+installers under the same tag. Published releases and existing tags are never
+overwritten or moved; a new release must be newer than the latest stable
+release. Workflow runs are serialized to avoid overlapping releases.
+
+Users choose **Settings -> Check for updates**, then download and run the newer
+installer. Their existing desktop progress remains in the local data directory.
+There is no background check or silent installation.
+
+### Manual builds and recovery
+
+- **Actions -> Build and release desktop -> Run workflow** remains build-only:
+  it validates the version files, runs tests/packaging, and uploads an Actions
+  artifact, but never publishes a release, even when run from `main`.
+- Releases stay in draft until both executables have uploaded successfully.
+  Failed tests/builds never publish, and incomplete uploads are not offered by
+  the app. Use **Re-run all jobs** on the original failed push run to retry;
+  a draft targeting that exact commit is safely resumed. Do not push a different
+  commit under a version whose draft/tag already belongs to the earlier commit;
+  review the draft and use a fresh version instead.
+- The original **Publish to install gist** workflow remains independent and
+  unchanged. A version bump also advances its `version.json` when the existing
+  `GIST_TOKEN` is configured; that token is not required by desktop releases.
+  Neither desktop release automation nor the gist workflow deploys Cloudflare.
 
 Development-tooling audit note (November 2, 2026): `npm audit` reports 15 moderate
 findings in transitive packaging dependencies, while `npm audit --omit=dev`
