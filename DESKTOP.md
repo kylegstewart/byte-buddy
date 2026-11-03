@@ -225,8 +225,13 @@ short-lived TURN credentials and their own signaling results. Audio/SDP are not
 written to local saves, analytics, or relay logs.
 
 TURN includes TLS on port 443 as a fallback, not as a guarantee that a corporate
-network permits voice. Check applicable policy before using it. Failed voice
-negotiation leaves the normal Lounge intact and releases the microphone; choose
+network permits voice. Check applicable policy before using it. Voice gathers
+connection candidates for up to 12 seconds. If some network probes are still
+pending at that deadline, it negotiates using the candidates already collected,
+including available TLS 443 relays, rather than discarding them. If no candidates
+are available, voice reports a gathering error; establishing media after signaling
+has a separate 20-second deadline and timeout message. Failed voice negotiation leaves the
+normal Lounge intact and releases the microphone; choose
 **Retry voice** after addressing connectivity or device permissions. TURN
 credentials expire, and long sessions may require disconnecting/re-enabling
 voice; no automatic microphone reconnection is attempted. Do not bypass network

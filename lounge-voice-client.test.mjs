@@ -7,6 +7,7 @@ const iceServers = [{ urls: ["turns:turn.cloudflare.com:443?transport=tcp"], use
 const room = () => ({ status: "connected", org: "fixture", self: { id: 1 }, members: [{ id: 1, x: 100, y: 100 }, { id: 2, x: 200, y: 100 }] });
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise((finish) => { resolve = finish; }); return { promise, resolve }; };
+const relayCandidate = "a=candidate:1 1 udp 16777215 203.0.113.1 50000 typ relay raddr 0.0.0.0 rport 0\r\n";
 
 class Track extends EventTarget {
     constructor(kind = "audio") { super(); this.kind = kind; this.enabled = true; this.stopped = false; }
@@ -24,7 +25,7 @@ class AudioNode {
     getFloatTimeDomainData(samples) { samples.fill(0.1); }
 }
 
-function harness({ media, request: customRequest } = {}) {
+function harness({ media, request: customRequest, configurePeer } = {}) {
     const tracks = [new Track()];
     const stream = new Stream(tracks);
     const peers = [], contexts = [], requests = [], capture = [], changes = [], elements = [];
@@ -33,14 +34,23 @@ function harness({ media, request: customRequest } = {}) {
     let subscriptionId = null;
     let nearby = [{ id: 2, revision: "publisher-2" }];
     class Peer extends EventTarget {
-        constructor(configuration) { super(); this.configuration = configuration; this.connectionState = "new"; this.iceGatheringState = "complete"; peers.push(this); }
+        constructor(configuration) {
+            super();
+            this.configuration = configuration;
+            this.connectionState = "new";
+            this.iceGatheringState = "complete";
+            this.candidates = relayCandidate;
+            this.connects = true;
+            peers.push(this);
+            configurePeer?.(this, peers.length - 1);
+        }
         addTransceiver(track, options) { this.track = track; this.options = options; return { mid: "0" }; }
         async createOffer() { return { type: "offer", sdp: "audio offer" }; }
         async createAnswer() { return { type: "answer", sdp: "audio answer" }; }
-        async setLocalDescription(description) { this.localDescription = description; }
+        async setLocalDescription(description) { this.localDescription = { ...description, sdp: description.sdp + "\r\n" + this.candidates }; }
         async setRemoteDescription(description) {
             this.remoteDescription = description;
-            this.connectionState = "connected";
+            if (this.connects) this.connectionState = "connected";
             if (description.type === "offer") this.dispatchEvent(Object.assign(new Event("track"), { track: new Track(), transceiver: { mid: "rx" } }));
             this.dispatchEvent(new Event("connectionstatechange"));
         }
@@ -129,6 +139,133 @@ test("opt-in publishes only a disabled microphone track and receives server-auth
     assert.ok(fixture.peers.every((peer) => peer.connectionState === "closed"));
     assert.equal(fixture.timers.size, 0);
     assert.equal(fixture.requests.at(-1).action, "leave");
+});
+
+for (const [role, index, action] of [["publisher", 0, "publish"], ["receiver", 1, "answer"]]) {
+    test(`${role} uses gathered candidates at the deadline when other ICE probes are still pending`, async (t) => {
+        t.mock.timers.enable({ apis: ["setTimeout"] });
+        const fixture = harness({ configurePeer: (peer, number) => {
+            if (number === index) { peer.iceGatheringState = "gathering"; peer.candidates = ""; }
+        } });
+        t.after(() => fixture.controller.stop());
+        const starting = fixture.controller.start();
+        await flush();
+        assert.equal(fixture.peers.length, index + 1);
+        t.mock.timers.tick(1000);
+        const peer = fixture.peers[index];
+        peer.localDescription.sdp += relayCandidate;
+        peer.dispatchEvent(Object.assign(new Event("icecandidate"), { candidate: { type: "relay" } }));
+        t.mock.timers.tick(10_999);
+        await flush();
+        assert.equal(fixture.requests.some((request) => request.action === action), false);
+        assert.equal(fixture.tracks[0].enabled, false);
+        t.mock.timers.tick(1);
+        await starting;
+        assert.equal(fixture.controller.state.status, "connected");
+        assert.equal(peer.iceGatheringState, "gathering");
+        const signaled = fixture.requests.find((request) => request.action === action);
+        assert.equal(signaled.sessionDescription.type, index === 0 ? "offer" : "answer");
+        assert.equal(signaled.sessionDescription.sdp, peer.localDescription.sdp);
+        assert.match(signaled.sessionDescription.sdp, /typ relay/);
+        assert.equal(fixture.tracks[0].enabled, false);
+        await fixture.controller.stop();
+        assert.equal(fixture.timers.size, 0);
+        assert.ok(fixture.peers.every((connection) => connection.connectionState === "closed"));
+    });
+
+    test(`${role} reports an ICE gathering failure when the deadline has no candidates`, async (t) => {
+        t.mock.timers.enable({ apis: ["setTimeout"] });
+        const fixture = harness({ configurePeer: (peer, number) => {
+            if (number === index) { peer.iceGatheringState = "gathering"; peer.candidates = ""; }
+        } });
+        t.after(() => fixture.controller.stop());
+        const starting = fixture.controller.start();
+        await flush();
+        t.mock.timers.tick(12_000);
+        await starting;
+        assert.equal(fixture.controller.state.status, "error");
+        assert.match(fixture.controller.state.message, /could not gather any network candidates/);
+        assert.equal(fixture.requests.some((request) => request.action === action), false);
+        assert.equal(fixture.requests.at(-1).action, "leave");
+        assert.ok(fixture.tracks[0].stopped && fixture.contexts[0].closed);
+        assert.ok(fixture.peers.every((peer) => peer.connectionState === "closed"));
+        assert.equal(fixture.permissionReleases, 1);
+        assert.equal(fixture.timers.size, 0);
+    });
+
+    test(`stopping the ${role} during ICE gathering cancels the deadline without late signaling`, async (t) => {
+        t.mock.timers.enable({ apis: ["setTimeout"] });
+        const fixture = harness({ configurePeer: (peer, number) => { if (number === index) peer.iceGatheringState = "gathering"; } });
+        const starting = fixture.controller.start();
+        await flush();
+        await fixture.controller.stop();
+        await starting;
+        t.mock.timers.tick(12_000);
+        await flush();
+        assert.equal(fixture.controller.state.status, "off");
+        assert.equal(fixture.requests.some((request) => request.action === action), false);
+        assert.equal(fixture.requests.filter((request) => request.action === "leave").length, 1);
+        assert.ok(fixture.tracks[0].stopped);
+        assert.equal(fixture.timers.size, 0);
+    });
+
+    test(`${role} distinguishes a media connection timeout from ICE gathering failure`, async (t) => {
+        t.mock.timers.enable({ apis: ["setTimeout"] });
+        const fixture = harness({ configurePeer: (peer, number) => { if (number === index) peer.connects = false; } });
+        t.after(() => fixture.controller.stop());
+        const starting = fixture.controller.start();
+        await flush();
+        assert.ok(fixture.requests.some((request) => request.action === action));
+        t.mock.timers.tick(20_000);
+        await starting;
+        assert.equal(fixture.controller.state.status, "error");
+        assert.match(fixture.controller.state.message, /media connection timed out after signaling/);
+        assert.equal(fixture.requests.at(-1).action, "leave");
+        assert.ok(fixture.tracks[0].stopped && fixture.contexts[0].closed);
+        assert.equal(fixture.timers.size, 0);
+    });
+}
+
+test("ICE gathering that completes before the deadline negotiates without waiting for the timer", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const fixture = harness({ configurePeer: (peer, index) => { if (index === 0) peer.iceGatheringState = "gathering"; } });
+    t.after(() => fixture.controller.stop());
+    const starting = fixture.controller.start();
+    await flush();
+    t.mock.timers.tick(500);
+    fixture.peers[0].iceGatheringState = "complete";
+    fixture.peers[0].dispatchEvent(new Event("icegatheringstatechange"));
+    await starting;
+    assert.equal(fixture.controller.state.status, "connected");
+    t.mock.timers.tick(12_000);
+    await flush();
+    assert.equal(fixture.controller.state.status, "connected");
+});
+
+test("completed ICE gathering without candidates fails before publishing", async () => {
+    const fixture = harness({ configurePeer: (peer) => { peer.candidates = ""; } });
+    await fixture.controller.start();
+    assert.equal(fixture.controller.state.status, "error");
+    assert.match(fixture.controller.state.message, /could not gather any network candidates/);
+    assert.deepEqual(fixture.requests.map((request) => request.action), ["join", "leave"]);
+    assert.ok(fixture.tracks[0].stopped);
+});
+
+test("failed peers do not signal gathered candidates while other ICE probes are pending", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const fixture = harness({ configurePeer: (peer) => { peer.iceGatheringState = "gathering"; } });
+    const starting = fixture.controller.start();
+    await flush();
+    fixture.peers[0].connectionState = "failed";
+    fixture.peers[0].dispatchEvent(new Event("icegatheringstatechange"));
+    await starting;
+    t.mock.timers.tick(12_000);
+    await flush();
+    assert.equal(fixture.controller.state.status, "error");
+    assert.match(fixture.controller.state.message, /voice connection failed/);
+    assert.deepEqual(fixture.requests.map((request) => request.action), ["join", "leave"]);
+    assert.ok(fixture.tracks[0].stopped);
+    assert.equal(fixture.timers.size, 0);
 });
 
 test("mute/deafen cannot reopen a held microphone, and position updates silence missing peers", async () => {

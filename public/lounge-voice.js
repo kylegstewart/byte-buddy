@@ -17,29 +17,36 @@ export function validateIceServers(servers) {
     });
 }
 
-function waitForPeer(peer, event, ready, failed, signal, timeoutMs) {
+function waitForPeer(peer, event, ready, failed, signal, timeoutMs, timeoutMessage = "Voice media connection timed out after signaling. Your network may block WebRTC or TURN.") {
     return new Promise((resolve, reject) => {
         const finish = (error) => {
             clearTimeout(timer);
-            peer.removeEventListener(event, check);
+            peer.removeEventListener(event, changed);
             signal.removeEventListener("abort", abort);
             error ? reject(error) : resolve();
         };
         const abort = () => finish(new Error("Voice operation cancelled."));
-        const check = () => {
+        const check = (timedOut = false) => {
             if (signal.aborted) abort();
             else if (failed()) finish(new Error("The voice connection failed. Check your network and enable voice again."));
-            else if (ready()) finish();
+            else if (ready(timedOut)) finish();
+            else if (timedOut) finish(new Error(timeoutMessage));
         };
-        const timer = setTimeout(() => finish(new Error("Voice connection timed out. Your network may block WebRTC or TURN.")), timeoutMs);
-        peer.addEventListener(event, check);
+        const changed = () => check();
+        const timer = setTimeout(() => check(true), timeoutMs);
+        peer.addEventListener(event, changed);
         signal.addEventListener("abort", abort, { once: true });
         check();
     });
 }
 
 async function localDescription(peer, signal) {
-    await waitForPeer(peer, "icegatheringstatechange", () => peer.iceGatheringState === "complete", () => peer.connectionState === "failed" || peer.connectionState === "closed", signal, 12_000);
+    const gatheringError = "Voice could not gather any network candidates. Your network may block WebRTC or TURN.";
+    const hasCandidates = () => /^a=candidate:/m.test(peer.localDescription?.sdp ?? "");
+    // Unresponsive transports can keep gathering after a working relay is available.
+    await waitForPeer(peer, "icegatheringstatechange", (timedOut) => peer.iceGatheringState === "complete" || (timedOut && hasCandidates()),
+        () => peer.connectionState === "failed" || peer.connectionState === "closed", signal, 12_000, gatheringError);
+    if (!hasCandidates()) throw new Error(gatheringError);
     return { type: peer.localDescription.type, sdp: peer.localDescription.sdp };
 }
 
