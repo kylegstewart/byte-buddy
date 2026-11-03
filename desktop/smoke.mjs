@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkVoiceWindow } from "./voice-smoke.mjs";
 
 export async function checkDesktopWindow(window, screenshots) {
     window.webContents.setBackgroundThrottling(false);
@@ -98,5 +99,7 @@ export async function checkDesktopWindow(window, screenshots) {
         await window.webContents.debugger.sendCommand("Emulation.clearDeviceMetricsOverride");
         window.webContents.debugger.detach();
     }
+    result.voice = await checkVoiceWindow(window);
+    for (const [name, passed] of Object.entries(result.voice)) assert.equal(passed, true, `Desktop voice: ${name}`);
     return result;
 }

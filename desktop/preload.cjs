@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld("byteBuddyDesktop", Object.freeze({
     openData: () => ipcRenderer.invoke("desktop:open-data"),
     checkUpdates: () => ipcRenderer.invoke("desktop:check-updates"),
     downloadUpdate: () => ipcRenderer.invoke("desktop:download-update"),
+    releaseMicrophone: () => ipcRenderer.invoke("desktop:release-microphone"),
 }));

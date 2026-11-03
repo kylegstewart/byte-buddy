@@ -259,6 +259,65 @@ test('moves are clamped and throttled to the latest position', async (t) => {
     assert.deepEqual(lounge.log.move.at(-1), { x: 3160, y: 0 });
 });
 
+test('desktop voice signaling keeps sessions private and rejects stale voice IDs', async (t) => {
+    const lounge = await fakeLounge(t);
+    const requests = [];
+    const { client, calls } = setup(t, { fetch: async (url, options) => {
+        if (!url.endsWith('/v1/voice')) return fetch(url, options);
+        const body = JSON.parse(options.body);
+        requests.push({ url, authorization: options.headers.Authorization, body });
+        return Response.json(body.action === 'join' ? { ok: true, voiceId: 'voice-one', iceServers: [{ credential: 'temporary' }] } : { ok: true });
+    } });
+    await assert.rejects(client.voice({ action: 'join' }), { code: 'voice_not_connected' });
+    await client.setServerUrl(lounge.url);
+    await client.join({ org: 'acme' });
+    const joined = await client.voice({ action: 'join' });
+    await client.voice({ action: 'status', voiceId: joined.voiceId });
+    assert.equal(calls.token, 1);
+    assert.ok(requests.every((request) => request.authorization === 'Session s1'));
+    assert.ok(requests.every((request) => !JSON.stringify(request).includes('gh-me')));
+    assert.doesNotMatch(JSON.stringify(client.state()), /voice-one|temporary|s1/);
+    await assert.rejects(client.voice({ action: 'listen', voiceId: 'other-voice' }), { code: 'stale_voice' });
+    await assert.rejects(client.voice({ action: 'proxy', url: 'https://private.invalid' }), { code: 'invalid_voice_action' });
+    const count = requests.length;
+    await client.voice({ action: 'leave', voiceId: 'other-voice' });
+    assert.equal(requests.length, count);
+    await client.voice({ action: 'leave', voiceId: joined.voiceId });
+    assert.equal(client.state().status, 'connected');
+    await assert.rejects(client.voice({ action: 'status', voiceId: joined.voiceId }), { code: 'stale_voice' });
+});
+
+test('late voice joins are cleaned up using their original session after a Lounge disconnect', async (t) => {
+    const lounge = await fakeLounge(t);
+    let complete;
+    const requests = [];
+    const { client } = setup(t, { fetch: async (url, options) => {
+        if (!url.endsWith('/v1/voice')) return fetch(url, options);
+        const body = JSON.parse(options.body);
+        requests.push({ url, auth: options.headers.Authorization, body });
+        if (body.action === 'join') return new Promise((resolve) => { complete = () => resolve(Response.json({ voiceId: 'late-voice' })); });
+        return Response.json({ ok: true });
+    } });
+    await client.setServerUrl(lounge.url);
+    await client.join({ org: 'acme' });
+    const pending = assert.rejects(client.voice({ action: 'join' }), { code: 'stale_voice' });
+    await sleep(5);
+    await client.leave();
+    complete();
+    await pending;
+    assert.deepEqual(requests.at(-1), { url: lounge.url + '/v1/voice', auth: 'Session s1', body: { action: 'leave', voiceId: 'late-voice' } });
+    assert.equal(client.state().status, 'idle');
+});
+
+test('voice errors do not interrupt normal Lounge presence', async (t) => {
+    const lounge = await fakeLounge(t);
+    const { client } = setup(t, { fetch: async (url, options) => url.endsWith('/v1/voice') ? Response.json({ ok: false, code: 'voice_not_configured', error: 'Voice is not configured.' }, { status: 503 }) : fetch(url, options) });
+    await client.setServerUrl(lounge.url);
+    await client.join({ org: 'acme' });
+    await assert.rejects(client.voice({ action: 'join' }), { code: 'voice_not_configured' });
+    assert.equal(client.state().status, 'connected');
+});
+
 test('buddy server exposes lounge routes, broadcasts lounge events and auto-leaves', async (t) => {
     const events = new EventEmitter();
     let current = { status: 'idle', members: [] };

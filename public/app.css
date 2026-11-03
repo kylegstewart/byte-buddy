@@ -376,6 +376,14 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
 .lounge-self .lounge-label { fill: #ffd84a; }
 .lounge-self-marker { fill: #ffd84a; opacity: .8; }
 .lounge-members { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; font-size: 12px; overflow-wrap: anywhere; }
+.lounge-voice select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 8px; border: 1px solid var(--db-border); border-radius: 6px; background: var(--db-bg); color: var(--db-fg); font: inherit; }
+.lounge-voice .section-title { margin: 0; }
+.lounge-voice .lounge-row { align-items: center; }
+.voice-talk { touch-action: none; user-select: none; }
+.voice-talk[aria-pressed="true"] { border-color: var(--db-green); color: var(--db-green); }
+.lounge-voice button[aria-pressed="true"] { background: var(--db-surface); border-color: var(--db-accent); }
+.lounge-voice-ring { fill: var(--db-green); stroke: #fff; stroke-width: 1.5; opacity: 0; pointer-events: none; }
+.lounge-member[data-speaking="true"] .lounge-voice-ring { opacity: 1; }
 
 /* Modal */
 .chart-modal { box-sizing: border-box; width: min(1000px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 16px; border: 1px solid var(--db-border); border-radius: 12px; background: var(--db-bg); color: var(--db-fg); overflow: auto; }

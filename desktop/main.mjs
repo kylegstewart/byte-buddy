@@ -6,7 +6,7 @@ import { createDesktopConfig, validateUserId } from "./config.mjs";
 import { createDesktopRuntime } from "./runtime.mjs";
 import { createGitHubAuth } from "./github-auth.mjs";
 import { createDesktopUpdater } from "./updates.mjs";
-import { isAppDocument, safeExternalUrl } from "./security.mjs";
+import { isAppDocument, isMicrophonePermission, safeExternalUrl } from "./security.mjs";
 import { copilotHome, readServerConfig } from "../itsource.mjs";
 
 app.setName("Byte Buddy");
@@ -23,6 +23,13 @@ const configuration = createDesktopConfig(root);
 const auth = createGitHubAuth();
 const updater = createDesktopUpdater({ current: app.getVersion() });
 const trustedLoungeServers = new Set();
+let microphoneAllowed = false;
+let microphoneEpoch = 0;
+
+function releaseMicrophone() {
+    microphoneAllowed = false;
+    microphoneEpoch++;
+}
 
 async function authorizeLounge(url) {
     if (trustedLoungeServers.has(url)) return true;
@@ -52,6 +59,7 @@ async function openExternal(value) {
 }
 
 function registerDesktopCommands() {
+    handle("desktop:release-microphone", releaseMicrophone);
     handle("desktop:status", () => {
         const config = configuration.read();
         return { version: app.getVersion(), packaged: app.isPackaged, root, userId: config.userId, mcpConfigPath: config.mcpConfigPath, serverName: config.serverName, github: auth.status() };
@@ -106,8 +114,20 @@ async function boot() {
     window = new BrowserWindow({ title: "Byte Buddy", icon: join(here, "assets", "icon.png"), width: 1200, height: 900, minWidth: 480, minHeight: 560, show: false,
         webPreferences: { preload: join(here, "preload.cjs"), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, navigateOnDragDrop: false } });
     const browserSession = window.webContents.session;
-    browserSession.setPermissionRequestHandler((_contents, _permission, respond) => respond(false));
-    browserSession.setPermissionCheckHandler(() => false);
+    browserSession.setPermissionRequestHandler((contents, permission, respond, details) => {
+        if (contents !== window.webContents || !isMicrophonePermission(permission, details, appUrl) || runtime.lounge.state().status !== "connected" || !window.isVisible()) return respond(false);
+        const epoch = ++microphoneEpoch;
+        void dialog.showMessageBox(window, { type: "question", buttons: ["Cancel", "Enable microphone"], defaultId: 0, cancelId: 0,
+            message: "Enable proximity voice in the Lounge?", detail: "Your microphone audio will be sent to Cloudflare Realtime and authorized nearby players in your organization while you hold push-to-talk. Byte Buddy does not record audio. Ticket and MCP data are not sent. Returning to Byte Buddy or hiding the app disconnects voice. Follow your organization’s network and privacy policies." })
+            .then(({ response }) => {
+                const allowed = response === 1 && epoch === microphoneEpoch && !window.isDestroyed() && window.isVisible() && runtime.lounge.state().status === "connected" && isAppDocument(window.webContents.getURL(), appUrl);
+                microphoneAllowed = allowed;
+                respond(allowed);
+            }).catch(() => respond(false));
+    });
+    browserSession.setPermissionCheckHandler((contents, permission, origin, details) => microphoneAllowed && contents === window.webContents && origin === new URL(appUrl).origin && runtime.lounge.state().status === "connected" && isMicrophonePermission(permission, details, appUrl, true));
+    runtime.lounge.events.on("change", () => { if (runtime.lounge.state().status !== "connected") releaseMicrophone(); });
+    window.webContents.on("did-start-navigation", releaseMicrophone);
     window.webContents.setWindowOpenHandler(({ url }) => { if (safeExternalUrl(url)) void openExternal(url).catch(() => {}); return { action: "deny" }; });
     window.webContents.on("will-navigate", (event, url) => {
         if (isAppDocument(url, appUrl)) return;

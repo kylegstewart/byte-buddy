@@ -55,6 +55,7 @@ test("all routes, users, organizations, hosts, and credentials address the same 
         ["GET", "/healthz"], ["GET", "/v1/stream?s=opaque-session"],
         ["POST", "/v1/session"], ["POST", "/v1/move"],
         ["POST", "/v1/heartbeat"], ["POST", "/v1/leave"],
+        ["POST", "/v1/voice"],
     ];
     for (const organization of ["org-a", "org-b"]) {
         for (const [method, path] of routes) {
@@ -68,9 +69,20 @@ test("all routes, users, organizations, hosts, and credentials address the same 
             assert.equal(request.bodyUsed, false);
         }
     }
-    assert.equal(fixture.names.length, 12);
+    assert.equal(fixture.names.length, 14);
     assert.deepEqual([...new Set(fixture.names)], [SINGLETON_NAME]);
     assert.deepEqual([...new Set(fixture.identifiers)], [`id:${SINGLETON_NAME}`]);
+});
+
+test("voice configuration forwards exactly four optional named values and never arbitrary secrets", () => {
+    const secrets = { CF_REALTIME_APP_ID: "app", CF_REALTIME_APP_SECRET: "secret",
+        CF_TURN_KEY_ID: "key", CF_TURN_API_TOKEN: "token" };
+    const baseline = containerEnvironment({ LOUNGE_ALLOWED_ORGS: "org-a" });
+    assert.deepEqual(containerEnvironment({ LOUNGE_ALLOWED_ORGS: "org-a", ...secrets,
+        CF_ACCOUNT_TOKEN: "never", CF_REALTIME_HOST: "https://attacker.invalid", GITHUB_TOKEN: "never" }),
+    { ...baseline, ...secrets });
+    assert.deepEqual(containerEnvironment({ LOUNGE_ALLOWED_ORGS: "org-a", CF_REALTIME_APP_SECRET: " ",
+        CF_TURN_KEY_ID: null, CF_TURN_API_TOKEN: 1 }), baseline);
 });
 
 test("unconfigured deployments and unknown routes never contact a container", async () => {
@@ -139,7 +151,7 @@ test("deployment keeps the existing Docker context, fixed port, singleton cap, a
     assert.equal(config.observability.logs.invocation_logs, false);
     assert.equal(config.preview_urls, false);
     const dockerIgnore = await readFile(new URL("../.dockerignore", import.meta.url), "utf8");
-    assert.deepEqual(dockerIgnore.trim().split(/\r?\n/), ["**", "!Dockerfile", "!server.mjs"]);
+    assert.deepEqual(dockerIgnore.trim().split(/\r?\n/), ["**", "!Dockerfile", "!server.mjs", "!voice.mjs"]);
     const source = await readFile(new URL("./worker.mjs", import.meta.url), "utf8");
     assert.match(source, /this\.containerFetch\(request, CONTAINER_PORT\)/);
     assert.match(source, /this\.envVars = containerEnvironment\(env\)/);

@@ -179,6 +179,7 @@ function mountLounge(source) {
             api, esc, toast, renderBuddy: robot, buddyViewBox: robotViewBox,
             getOrgs: () => state?.github?.settings?.organizations || [],
             getBuddy: () => ({ ...robotOpts(), name: state?.name }), reduced: reducedMotion,
+            desktop: Boolean(CFG.desktop),
         });
     } catch { return; }
     source.addEventListener("lounge", (event) => {

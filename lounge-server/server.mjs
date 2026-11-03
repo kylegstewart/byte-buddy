@@ -2,6 +2,7 @@
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { createVoiceService, VOICE_BODY_LIMIT } from "./voice.mjs";
 
 const MAX_BODY = 16 * 1024;
 const ORG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
@@ -61,6 +62,8 @@ export function createLoungeServer(options = {}) {
     const sessions = new Map(); // session token -> { sessionId, userId, login, org, buddy, lastSeen }
     const rooms = new Map(); // org -> Map(userId -> member)
     const lastPositions = new Map(); // userId -> { org, x, y, at } so quick reconnects keep their spot
+    const voice = createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType: LoungeError,
+        timeoutMs: options.voiceTimeoutMs });
     let server;
 
     const broadcast = (org, event, data, exceptId) => {
@@ -75,6 +78,7 @@ export function createLoungeServer(options = {}) {
         const member = room?.get(id);
         if (!member) return;
         room.delete(id);
+        voice.removed(member, org);
         if (!room.size) rooms.delete(org);
         lastPositions.set(id, { org, x: member.x, y: member.y, at: member.lastSeen });
         member.res.end();
@@ -162,6 +166,7 @@ export function createLoungeServer(options = {}) {
         };
         lastPositions.delete(session.userId);
         room.set(member.id, member);
+        if (previous) voice.removed(previous, session.org);
 
         res.writeHead(200, {
             "Content-Type": "text/event-stream; charset=utf-8",
@@ -186,9 +191,9 @@ export function createLoungeServer(options = {}) {
         });
     }
 
-    function move(session, body) {
+    async function move(session, body) {
         const member = rooms.get(session.org)?.get(session.userId);
-        if (!member) throw new LoungeError(409, "not_in_room", "Open the stream before moving.");
+        if (!member || member.sessionId !== session.sessionId) throw new LoungeError(409, "not_in_room", "Open this session's stream before moving.");
         const now = Date.now();
         member.moves = member.moves.filter((at) => now - at < 1000);
         if (member.moves.length >= MOVES_PER_SEC) throw new LoungeError(429, "rate_limited", "Too many moves.");
@@ -197,17 +202,19 @@ export function createLoungeServer(options = {}) {
         if (x === null || y === null) throw new LoungeError(400, "bad_position", "x and y must be numbers.");
         member.moves.push(now);
         Object.assign(member, { x, y, lastSeen: now });
+        const cleanup = voice.moved(session.org);
         broadcast(session.org, "move", { id: member.id, x, y });
+        await cleanup;
         return { x, y };
     }
 
-    function readBody(req) {
+    function readBody(req, maxBody = MAX_BODY) {
         return new Promise((resolve, reject) => {
             let size = 0;
             const chunks = [];
             req.on("data", (chunk) => {
                 size += chunk.length;
-                if (size <= MAX_BODY) return chunks.push(chunk);
+                if (size <= maxBody) return chunks.push(chunk);
                 // Reply 413 and drop the connection afterwards instead of buffering the rest.
                 req.removeAllListeners("data");
                 req.resume();
@@ -245,19 +252,26 @@ export function createLoungeServer(options = {}) {
         if (req.method !== "POST" || !url.pathname.startsWith("/v1/")) {
             throw new LoungeError(404, "not_found", "Not found.");
         }
+        if (route === "POST /v1/voice") {
+            const session = authSession(req, url);
+            const body = await readBody(req, VOICE_BODY_LIMIT);
+            return send(res, 200, { ok: true, ...(await voice.handle(session, body)) });
+        }
         const body = await readBody(req);
         if (route === "POST /v1/session") return send(res, 200, { ok: true, ...(await createSession(req, body)) });
         const session = authSession(req, url);
         switch (url.pathname) {
             case "/v1/move":
-                return send(res, 200, { ok: true, ...move(session, body) });
+                return send(res, 200, { ok: true, ...(await move(session, body)) });
             case "/v1/heartbeat": {
                 const member = rooms.get(session.org)?.get(session.userId);
-                if (member) member.lastSeen = Date.now();
+                if (member?.sessionId === session.sessionId) member.lastSeen = Date.now();
                 return send(res, 200, { ok: true });
             }
             case "/v1/leave":
-                removeMember(session.org, session.userId);
+                if (rooms.get(session.org)?.get(session.userId)?.sessionId === session.sessionId) {
+                    removeMember(session.org, session.userId);
+                }
                 lastPositions.delete(session.userId);
                 sessions.delete(session.sessionId);
                 return send(res, 200, { ok: true });
@@ -288,17 +302,19 @@ export function createLoungeServer(options = {}) {
                 server.listen(port, host, () => resolve({ port: server.address().port }));
             });
         },
-        close() {
+        async close() {
             clearInterval(sweeper);
+            const voiceClosed = voice.close();
             for (const room of rooms.values()) for (const member of room.values()) member.res.end();
             rooms.clear();
             sessions.clear();
             lastPositions.clear();
-            if (!server) return Promise.resolve();
-            return new Promise((resolve) => {
+            if (!server) return voiceClosed;
+            await new Promise((resolve) => {
                 server.close(() => resolve());
                 server.closeAllConnections?.();
             });
+            await voiceClosed;
         },
     };
 }

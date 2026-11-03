@@ -329,6 +329,23 @@
           <button id="loungeConnections" type="button" class="btn btn-sm">Manage connections</button>
           <p class="hint">Returning to Byte Buddy keeps you in the room. Choose Leave to disconnect.</p>
         </section>
+        <section id="loungeVoice" class="card connection-stack lounge-voice" aria-labelledby="loungeVoiceTitle" hidden>
+          <h2 id="loungeVoiceTitle" class="section-title">Proximity voice</h2>
+          <p class="hint">Optional, push-to-talk audio through Cloudflare. Only nearby players in your organization can subscribe. Byte Buddy does not record audio; your ticket/MCP data stays separate.</p>
+          <label for="loungeVoiceMic">Microphone<select id="loungeVoiceMic"><option value="">System default microphone</option></select></label>
+          <button id="loungeVoiceRefresh" type="button" class="btn btn-sm">Refresh microphones</button>
+          <div class="lounge-row">
+            <button id="loungeVoiceJoin" type="button" class="btn btn-primary" disabled>Enable voice</button>
+            <button id="loungeVoiceLeave" type="button" class="btn" hidden>Disconnect voice</button>
+          </div>
+          <button id="loungeVoiceTalk" type="button" class="btn voice-talk" aria-pressed="false" disabled>Hold to talk (V)</button>
+          <div class="lounge-row">
+            <button id="loungeVoiceMute" type="button" class="btn btn-sm" aria-pressed="false" disabled>Mute microphone</button>
+            <button id="loungeVoiceDeafen" type="button" class="btn btn-sm" aria-pressed="false" disabled>Deafen</button>
+          </div>
+          <p id="loungeVoiceStatus" class="lounge-status" role="status" aria-live="polite">Voice is off. Join the Lounge to enable it.</p>
+          <p class="hint">Hold V while this window is focused, or hold the talk button. Returning to Byte Buddy or hiding the app disconnects voice and releases the microphone. Use headphones to avoid feedback.</p>
+        </section>
         <section class="card" aria-labelledby="loungeMembersTitle">
           <h2 id="loungeMembersTitle" class="section-title">Here now</h2>
           <ul id="loungeMemberList" class="lounge-members"><li class="hint">Nobody here yet.</li></ul>

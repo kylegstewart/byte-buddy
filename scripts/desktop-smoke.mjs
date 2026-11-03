@@ -21,7 +21,7 @@ try {
     const result = await promisify(execFile)(executable, args, { cwd: project, env: environment, windowsHide: true, timeout: 45_000, maxBuffer: 1024 * 1024 });
     const report = JSON.parse(readFileSync(join(data, "smoke.json"), "utf8"));
     if (!report.desktopBridge || !report.nodeUnavailable || !report.desktop || !report.freshStart || !report.deviceHidden
-        || !Object.values(report.navigation).every(Boolean) || report.layouts.length !== 4) throw new Error("Desktop isolation, navigation, or layout checks failed.");
+        || !Object.values(report.navigation).every(Boolean) || !report.voice || !Object.values(report.voice).every(Boolean) || report.layouts.length !== 4) throw new Error("Desktop isolation, navigation, voice, or layout checks failed.");
     process.stdout.write(`${result.stdout}\nDesktop smoke test passed using isolated temporary data.\n`);
 } finally {
     if (resolve(data).startsWith(`${resolve(tmpdir())}${sep}`)) rmSync(data, { recursive: true, force: true });

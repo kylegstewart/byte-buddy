@@ -11,7 +11,7 @@ purchased, or authenticated by adding these files.
 
 - Every accepted request uses `idFromName("byte-buddy-lounge")` in the same `LOUNGE`
   namespace, irrespective of user, organization, token, client address, or URL host.
-  This includes health, sessions, streams, moves, heartbeats, and leaves. Never
+  This includes health, sessions, streams, moves, heartbeats, leaves, and voice. Never
   substitute `getRandom()`, per-user/per-org IDs, or round-robin routing: rooms and
   sessions live together in one Node process. `max_instances: 1` is an extra
   production cap, not the mechanism that selects the singleton.
@@ -22,7 +22,7 @@ purchased, or authenticated by adding these files.
   `cf-container-target-port`. HTTP/SSE are passed through as streams, without
   reading/accumulating response bodies, caching, or replaying failed POSTs.
 - The Docker build context is `lounge-server/`, not the repository root. Its
-  existing Dockerfile copies only `server.mjs` into the image. An allowlist
+  Dockerfile copies only `server.mjs` and `voice.mjs` into the image. An allowlist
   `.dockerignore` excludes all other project files from the build context. Keep
   secrets out of the Dockerfile/server and preserve that allowlist. Desktop code,
   ticket MCP connections/credentials, ticket data, progression,
@@ -195,10 +195,11 @@ independently authenticate/revoke Node sessions.
   passes only explicit settings to Node. Headers, query strings, JSON, and
   Worker variables cannot select arbitrary proxy destinations/container ports.
   GitHub Enterprise custom origins are deliberately unsupported here.
-- No shared GitHub token or application secret is required. Never put secrets
-  in Wrangler `vars`, Docker build arguments, source, or image layers. Future
-  secrets need Cloudflare secret bindings and reviewed explicit runtime
-  mapping, never `envVars = { ...env }` or request-controlled settings.
+- Presence requires no shared GitHub token or application secret. Optional voice
+  requires the four explicitly mapped Realtime/TURN values described below.
+  Never put secret values in Wrangler `vars`, Docker build arguments, source, or
+  image layers; use Worker secret bindings, never `envVars = { ...env }` or
+  request-controlled settings.
 - Query sessions can leak through URL/access logs. Automatic Worker invocation
   logs are disabled because they include request URLs; the adapter never logs
   request headers, bodies, raw errors, or sessions. This cannot guarantee that
@@ -261,3 +262,169 @@ Recheck before deployment: prices, plan requirements, and APIs can change.
 - [Container FAQ](https://developers.cloudflare.com/containers/faq/)
 - [Invocation-log controls](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
 - [Worker Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
+
+## Optional proximity voice: Realtime SFU and TURN
+
+Implemented against the official Connection API/OpenAPI and TURN documentation
+reviewed on **November 2, 2026**. Voice is explicit opt-in, audio-only, and has no
+recording, transcription, video, DataChannels, or talk-event endpoint. Existing
+sessions, presence, movement, and heartbeats continue working without voice
+configuration. A voice join with an active stream then returns HTTP 503 with
+`code: "voice_not_configured"` and a meaningful configuration message.
+
+### Dashboard credentials and deployment
+
+1. Select the same Cloudflare account used for the Lounge. In **Realtime >
+   Serverless SFU**, create a dedicated SFU app for this Lounge/environment.
+   Copy its **App ID** into `CF_REALTIME_APP_ID` and its **App Secret** into
+   `CF_REALTIME_APP_SECRET`. These are the Connection API credentials, not a
+   GitHub token, account-wide Cloudflare API token, or RealtimeKit key.
+2. Open **Realtime > TURN** (the TURN keys page linked from Cloudflare's Generate
+   Credentials guide). Create a TURN key. Save the returned **TURN key ID** as
+   `CF_TURN_KEY_ID` and that key's credential-generation **API token** as
+   `CF_TURN_API_TOKEN`. Keep the token server-side. This is distinct from the
+   short-lived username/password generated for each voice join. Save the token
+   when shown; rotate the key if it is lost or exposed. Do not create an
+   account-wide administrator token for the Lounge runtime.
+3. From `lounge-server/cloudflare`, use the correct authenticated account and
+   existing Worker name. If this Worker does not exist yet, deploy it first using
+   the prerequisites above; it will run presence with voice disabled. Enter the
+   four values through Wrangler's private prompts, never command-line literals:
+
+   ```sh
+   npx wrangler secret put CF_REALTIME_APP_ID
+   npx wrangler secret put CF_REALTIME_APP_SECRET
+   npx wrangler secret put CF_TURN_KEY_ID
+   npx wrangler secret put CF_TURN_API_TOKEN
+   npm run check-config
+   npm run deploy
+   ```
+
+   The code forwards only these four named optional values, in addition to the
+   existing explicit presence configuration. The checked-in JSON contains no
+   credential values; no secret bindings are required for a presence-only
+   deployment. The App ID is not itself a password, but using the same secret
+   binding procedure avoids accidentally mixing accounts/environments.
+4. Ensure a newly started container receives the updated runtime environment.
+   Container environment values are read at process start: do not assume changing
+   a Worker secret hot-reloads a running Node process. Use the Containers
+   dashboard's restart/rollout controls if necessary, coordinating the presence
+   reconnect interruption with users. For a bare Node deployment, supply the
+   same four environment variables securely before starting `server.mjs`.
+5. Verify with two consenting desktop participants and headphones: opt into
+   voice, publish an audio track, listen and answer, then move either participant
+   farther than 480 units. Verify receiving tracks are closed, not merely muted.
+   Repeat for leaving voice, disconnecting SSE, replacing the desktop session,
+   and heartbeat expiry. Confirm another allowed organization cannot hear the
+   first. Test TURN/TLS443 from a restrictive network. These are operator checks;
+   no live account, credential, purchase, deployment, or microphone was used to
+   implement the backend.
+
+### Signaling contract
+
+Every call is `POST /v1/voice` with `Authorization: Session <lounge-session>`
+and a JSON object containing `action`. Query-string authentication is not
+accepted here. The exact session must own the current SSE member; a previously
+replaced session cannot signal, move, heartbeat, or remove its replacement.
+Success uses the existing `ok: true` envelope:
+
+| Action and additional request fields | Successful JSON response |
+| --- | --- |
+| `join` | `{ok:true,voiceId,iceServers,radius:480}` |
+| `publish`: `voiceId,mid,sessionDescription:{type:"offer",sdp}` | `{ok:true,sessionDescription:{type:"answer",sdp}}` |
+| `status`: `voiceId` | `{ok:true,peers:[{id,revision}],subscriptionId}` |
+| `listen`: `voiceId` | `{ok:true,subscriptionId,sessionDescription:{type:"offer",sdp},tracks:[{mid,id}]}` |
+| `answer`: `voiceId,subscriptionId,sessionDescription:{type:"answer",sdp}` | `{ok:true}` |
+| `leave`: `voiceId` | `{ok:true}`, including repeat leaves while the Lounge session/stream remains active |
+
+An empty listen returns exactly
+`{ok:true,subscriptionId:null,sessionDescription:null,tracks:[]}`. Status returns
+`subscriptionId:null` after revocation. IDs in `peers` and `tracks` are Lounge
+member IDs; `revision` is an opaque publisher generation, unrelated to SFU IDs.
+No client-supplied peer list, SFU session ID, track name, upstream URL, or
+credential selects what is published or subscribed. Long-lived SFU/TURN secrets
+and other users' SFU locators are never returned. Receiver SDP carries only the
+receiver's required WebRTC negotiation details; publisher MSID labels are scrubbed.
+
+Use separate sender and receiver RTCPeerConnections. A publish offer must have
+one audio media section with the supplied mid and sendonly/sendrecv direction;
+the server creates a fresh SFU publishing session and one random audio track.
+Listen creates a fresh receive-only SFU session, returns its offer, and the
+client answers with recvonly/inactive audio sections and the same mids. An answer
+for an old/revoked/already-answered subscription is rejected. Never reuse the old
+receiver after a roster or publisher revision change. No new SSE event is needed;
+the desktop can poll status approximately every 1.5 seconds.
+
+SDP is capped at 96 KiB and the voice-only request body at 128 KiB. Other Lounge
+bodies retain their 16 KiB cap. Signaling is non-concurrent per voice, returning
+`409 voice_busy` instead of creating overlapping SFU mutations. Per authenticated
+organization/member, each 60-second window permits at most four joins, thirty
+combined publish/listen/answer operations, and 120 total non-leave voice requests.
+Changing voice IDs or replacing streams does not reset these limits. Leave is
+always available. Ordinary errors use `{ok:false,code,error}`: authentication
+`401 bad_session`, no matching active stream `409 voice_not_in_room`, stale
+voice/subscription `409 voice_stale`, invalid audio SDP `400 bad_voice_sdp`,
+rate limiting `429 voice_rate_limited`, generic upstream failure
+`502 voice_upstream`, and unavailable cleanup `503 voice_unavailable`.
+
+### Authorization, cleanup, and operational limits
+
+- Discovery and subscription both select the same twelve closest published,
+  live, other members in the same organization whose Euclidean distance is at
+  most 480 world units, breaking distance ties by member ID. The selected roster
+  stays sorted by member ID to avoid rebuilding receivers when only its order
+  of distances changes. Unpublished opted-in
+  members are not audio sources. Roster changes invalidate the entire old
+  receiver, including an offer not yet answered, rather than trusting client
+  gain or a later status poll to enforce privacy.
+- Movement, SSE disconnect/replacement, member removal/expiry, voice replacement,
+  and server shutdown immediately invalidate affected state and request
+  `PUT tracks/close` with `force:true` for SFU tracks. Late allocations are
+  retained and force-closed too. A pending request cannot resurrect a retired
+  receiver/publisher; its response is discarded after resource cleanup.
+- Cleanup checks every requested mid's result, including HTTP-200 item failures.
+  It makes at most three attempts per cleanup pass with bounded delays; each
+  Cloudflare request has an eight-second timeout. On a receiver close failure,
+  the listener and its source publishers' voice states are invalidated and their
+  tracks also retired, providing a server-side source cutoff while retrying.
+  Exhausted or ambiguous cleanup disables further voice globally, closes other
+  known voice resources, retains unresolved resource state in memory, and logs
+  only a fixed operational warning, never tokens, SDP, or upstream error text.
+  Presence continues. A normal shutdown makes one final bounded cleanup pass.
+- A timeout/lost response is not proof an allocation failed; inspecting an empty
+  SFU session is not proof an in-flight request cannot finish later. Ambiguous
+  allocation cleanup remains unresolved and disables voice conservatively. There
+  is no session-delete API in the documented Connection API: empty/unconnected
+  retired sessions are left to Cloudflare's lifecycle, while media tracks are
+  explicitly closed. The process retains known IDs for cleanup until shutdown.
+- An SFU control-plane outage cannot guarantee immediate media cutoff. Nor can
+  forced close retract packets already sent or buffered. Treat an unconfirmed
+  cleanup warning as an operational privacy incident, not successful muting.
+  Restore Cloudflare control-plane access and gracefully drain/retry cleanup;
+  do not simply restart and lose unresolved state. If closure cannot be verified,
+  disable/revoke the affected dedicated SFU app via Cloudflare before recovery.
+  Voice is intentionally unavailable until operator remediation and a fresh
+  process; no automatic mic recapture or recording is provided.
+- Each join generates TURN credentials with a 3,600-second TTL and returns only
+  Cloudflare STUN/TURN endpoints on ports 3478, 5349, and 443, requiring TURN over
+  TLS on port 443. Browser-blocked port 53, alternate port 80, custom domains, and
+  arbitrary upstream hosts are excluded. Credential renewal is not implemented;
+  explicitly leave/rejoin before the credential lifetime for long sessions.
+  Issued credentials can remain usable until TTL expiry; they are not SFU
+  publication/room access credentials. GitHub tokens only authenticate against
+  GitHub and never go to the SFU/TURN service.
+
+Backend tests (mock Cloudflare transport; no live credentials):
+
+```sh
+node --test lounge-voice.test.mjs lounge-server.test.mjs cloudflare-lounge.test.mjs
+```
+
+Official voice references:
+
+- [SFU dashboard setup](https://developers.cloudflare.com/realtime/sfu/get-started/)
+- [Connection API](https://developers.cloudflare.com/realtime/sfu/api/)
+- [Connection API OpenAPI](https://developers.cloudflare.com/realtime/static/realtime-api-2024-05-21.yaml)
+- [Negotiation, races, retry, and teardown](https://developers.cloudflare.com/realtime/sfu/concepts/negotiation/)
+- [TURN keys and short-lived credentials](https://developers.cloudflare.com/realtime/turn/generate-credentials/)
+- [Container environment variables and secrets](https://developers.cloudflare.com/containers/examples/env-vars-and-secrets/)

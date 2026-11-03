@@ -69,6 +69,8 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
     let move = { pending: null, timer: null, last: 0 };
     let ready = null;
     let closed = false;
+    let voiceId = null;
+    let voiceGeneration = 0;
 
     function readConfig() {
         try {
@@ -97,10 +99,10 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
         };
     }
 
-    async function request(method, path, { body, auth, signal } = {}) {
+    async function request(method, path, { body, auth, signal, url = baseUrl } = {}) {
         let res;
         try {
-            res = await fetch(`${baseUrl}${path}`, {
+            res = await fetch(`${url}${path}`, {
                 method, redirect: "error", signal: signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 headers: { Authorization: auth, "Content-Type": "application/json", Accept: "application/json" },
                 body: body === undefined ? undefined : JSON.stringify(body),
@@ -132,6 +134,8 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
     }
 
     function fail(err, { keepSession = false } = {}) {
+        voiceGeneration++;
+        voiceId = null;
         gen++;
         stopTimers();
         abortStream();
@@ -303,6 +307,8 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
     }
 
     async function leave() {
+        voiceGeneration++;
+        voiceId = null;
         gen++;
         stopTimers();
         abortStream();
@@ -373,8 +379,33 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
         return state();
     }
 
+    async function voice(body = {}) {
+        const actions = new Set(["join", "publish", "status", "listen", "answer", "leave"]);
+        if (!actions.has(body.action)) throw new BuddyError("invalid_voice_action", "Unknown voice action.");
+        if (body.action === "leave" && body.voiceId !== voiceId) return {};
+        if (closed || status !== "connected" || !session) throw new BuddyError("voice_not_connected", "Join the Lounge before enabling voice.");
+        if (body.action !== "join" && (!voiceId || body.voiceId !== voiceId)) throw new BuddyError("stale_voice", "Voice has disconnected. Enable voice again.");
+        const generation = body.action === "join" ? ++voiceGeneration : voiceGeneration;
+        if (body.action === "join") voiceId = null;
+        const currentSession = session;
+        const url = baseUrl;
+        const auth = `Session ${currentSession}`;
+        try {
+            const result = await request("POST", "/v1/voice", { body, auth, url, signal: AbortSignal.timeout(30_000) });
+            if (generation !== voiceGeneration || currentSession !== session || status !== "connected") {
+                if (body.action === "join" && result.voiceId) await request("POST", "/v1/voice", { auth, url, body: { action: "leave", voiceId: result.voiceId }, signal: AbortSignal.timeout(3000) }).catch(() => {});
+                throw new BuddyError("stale_voice", "The Lounge connection changed. Enable voice again.");
+            }
+            if (body.action === "join") voiceId = result.voiceId;
+            if (body.action === "leave") { voiceId = null; voiceGeneration++; }
+            return result;
+        } catch (error) {
+            throw new BuddyError(error.code || "voice_error", error.message || "Voice is unavailable.");
+        }
+    }
+
     return {
-        events, state, join, leave, setServerUrl, move: moveTo,
+        events, state, join, leave, voice, setServerUrl, move: moveTo,
         async close() {
             closed = true;
             await leave();

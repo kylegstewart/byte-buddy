@@ -14,6 +14,7 @@ const STATIC = {
     "/static/pet-motion.js": "text/javascript; charset=utf-8",
     "/static/lounge.js": "text/javascript; charset=utf-8",
     "/static/lounge-map.js": "text/javascript; charset=utf-8",
+    "/static/lounge-voice.js": "text/javascript; charset=utf-8",
     "/static/desktop.js": "text/javascript; charset=utf-8",
 };
 const INSTANCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -79,13 +80,13 @@ export function createBuddyServer({ store, sync, github, updater, lounge, deskto
         res.end(JSON.stringify(body));
     }
 
-    function readBody(req) {
+    function readBody(req, limit = MAX_BODY) {
         return new Promise((resolve, reject) => {
             let size = 0;
             const chunks = [];
             req.on("data", (chunk) => {
                 size += chunk.length;
-                if (size > MAX_BODY) {
+                if (size > limit) {
                     reject(new BuddyError("too_large", "Request body too large."));
                     req.destroy();
                     return;
@@ -128,6 +129,7 @@ export function createBuddyServer({ store, sync, github, updater, lounge, deskto
             "/api/lounge/leave": () => lounge.leave(),
             "/api/lounge/move": (body) => lounge.move({ x: body.x, y: body.y }),
             "/api/lounge/config": (body) => lounge.setServerUrl(typeof body.url === "string" ? body.url : ""),
+            ...(desktop && lounge.voice ? { "/api/lounge/voice": (body) => lounge.voice(body) } : {}),
         } : {}),
         "/api/sync": async (body) => {
             const instance = INSTANCE_PATTERN.test(String(body.instance || "")) ? body.instance : null;
@@ -143,6 +145,7 @@ export function createBuddyServer({ store, sync, github, updater, lounge, deskto
         if (desktop) {
             res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
             res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("Permissions-Policy", "microphone=(self), camera=(), display-capture=()");
             if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return send(res, 403, { error: "Forbidden origin." });
         }
 
@@ -191,7 +194,7 @@ export function createBuddyServer({ store, sync, github, updater, lounge, deskto
         const route = req.method === "POST" ? POST_ROUTES[path] : null;
         if (!route) return send(res, 404, { error: "Not found." });
         try {
-            const result = await route(await readBody(req));
+            const result = await route(await readBody(req, path === "/api/lounge/voice" ? 128 * 1024 : MAX_BODY));
             return send(res, 200, { ok: true, result: result ?? null });
         } catch (error) {
             const known = error instanceof BuddyError || error.code === "ticket_source_unavailable";

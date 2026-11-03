@@ -136,7 +136,8 @@ session.
 
 ## Multiplayer Lounge and Cloudflare
 
-The cloud hosts **only the existing Lounge relay**:
+The cloud hosts the Lounge relay and, when explicitly configured, its optional
+voice transport. It does not host ticket/MCP processing or local saves:
 
 `Desktop -> HTTPS Worker -> one Durable Object/container -> Node Lounge`
 
@@ -174,6 +175,62 @@ Test the actual hostname and SSE connection under applicable rules; do not use
 tunnels, disguised traffic, or disabled controls to evade a block. If policies
 forbid installing/running the app or accessing its host, hosting changes cannot
 solve that restriction.
+
+## Optional proximity voice
+
+Voice is desktop-only and **off by default**, including after reconnecting or
+restarting. The original Copilot canvas keeps its existing presence-only Lounge.
+The operator must first configure Cloudflare Realtime SFU and TURN credentials
+and redeploy the relay; see **Optional proximity voice: Realtime SFU and TURN** in
+[`lounge-server/CLOUDFLARE.md`](lounge-server/CLOUDFLARE.md). Without that setup,
+normal Lounge movement works and enabling voice reports a configuration error
+before opening the microphone. Players do not create Cloudflare accounts or
+install another voice application.
+
+1. Join your organization in the Lounge, then select **Enable voice**. The desktop
+   asks for explicit microphone consent; Windows microphone privacy settings and
+   organization policy must also allow access. Camera and screen capture remain
+   denied, and embedded/foreign pages cannot request microphone access.
+2. Hold **V** while the Lounge window is focused, or hold the on-screen **Hold to
+   talk** button. Typing in an input/select does not activate the shortcut. The
+   microphone transmits audio only while push-to-talk is held and neither mute
+   nor deafen is active. Speaking players have a green indicator by their buddy.
+3. **Mute microphone** blocks your transmission. **Deafen** blocks transmission
+   and incoming playback. Muting/deafening does not release the microphone device;
+   **Disconnect voice** does. Neither control resumes a previous held talk key.
+4. To change microphones, disconnect voice, select **Refresh microphones**, choose
+   a device, and enable voice again. Labels may be unavailable until permission
+   has been granted. The system default works without selecting a device.
+5. Returning to Byte Buddy, navigating to Connections, hiding/minimizing the app,
+   closing it, losing the Lounge connection, or unplugging the microphone stops
+   capture and disconnects voice. Switching focus releases push-to-talk but can
+   keep incoming audio playing while the Lounge remains visible. Re-enabling
+   voice always requires an explicit action; there is no automatic recapture.
+
+Audio fades with distance and pans left/right using world positions, with a
+480-world-unit hearing radius and at most 12 nearby published voices per player.
+The server chooses allowed subscriptions using organization/session membership
+and current positions, and force-closes receiver tracks when access changes;
+client-side volume alone is not used as the authorization check. Walls do not
+block sound. Positions are ordinary multiplayer state, not tamper-proof proof of
+physical/private location, so voice is not a confidential-meeting feature.
+
+**Privacy and networking:** microphone audio goes to Cloudflare Realtime and
+authorized nearby players, not the ticket MCP or GitHub. This introduces a new
+audio-data boundary in addition to the existing relay trust decision. Byte Buddy
+does not record audio, but another participant or a modified client could record
+what they receive; this is not end-to-end encrypted against the SFU operator.
+Cloudflare application secrets stay on the server. Clients receive only
+short-lived TURN credentials and their own signaling results. Audio/SDP are not
+written to local saves, analytics, or relay logs.
+
+TURN includes TLS on port 443 as a fallback, not as a guarantee that a corporate
+network permits voice. Check applicable policy before using it. Failed voice
+negotiation leaves the normal Lounge intact and releases the microphone; choose
+**Retry voice** after addressing connectivity or device permissions. TURN
+credentials expire, and long sessions may require disconnecting/re-enabling
+voice; no automatic microphone reconnection is attempted. Do not bypass network
+or device restrictions.
 
 ## Local data, updates, and retained functionality
 
@@ -224,6 +281,12 @@ the desktop width capped at 1,440 pixels. To capture disposable visual previews,
 run `node scripts/desktop-smoke.mjs --screenshots .tools/desktop-layout-preview`.
 `test:packaged` runs the same check against `release/win-unpacked/Byte Buddy.exe`
 after building on Windows. Neither uses personal saves or signs into GitHub.
+The desktop checks also exercise real Chromium WebRTC sender/receiver
+negotiation, push-to-talk, audio-level indicators, deafen, and full cleanup with
+silent synthetic audio and host-only local ICE. No real microphone or Cloudflare
+connection is used. They verify real microphone access is denied outside a
+connected Lounge. These checks do not replace two-user testing against the live
+SFU/TURN deployment on the intended network.
 For an alternate build output directory, pass
 `node scripts/desktop-smoke.mjs --packaged --output release/github-signin-fix`.
 `npm run pack` builds an unpacked app; `npm run dist` builds Windows x64 NSIS

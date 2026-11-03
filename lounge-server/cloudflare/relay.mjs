@@ -9,6 +9,7 @@ const ROUTES = new Set([
     "POST /v1/move",
     "POST /v1/heartbeat",
     "POST /v1/leave",
+    "POST /v1/voice",
 ]);
 
 export function allowedOrganizations(value) {
@@ -29,6 +30,8 @@ export function containerEnvironment(env) {
         PORT: String(CONTAINER_PORT),
         LOUNGE_ALLOWED_ORGS: allowedOrganizations(env.LOUNGE_ALLOWED_ORGS),
         LOUNGE_GITHUB_API: "https://api.github.com",
+        ...Object.fromEntries(["CF_REALTIME_APP_ID", "CF_REALTIME_APP_SECRET", "CF_TURN_KEY_ID", "CF_TURN_API_TOKEN"]
+            .filter((key) => typeof env[key] === "string" && env[key].trim()).map((key) => [key, env[key]])),
     };
 }
 

@@ -1,5 +1,6 @@
 // The Lounge: shared org room UI. Pure helpers are exported for tests; createLoungeView owns the panel DOM.
 import { WORLD, SPAWN, DEAD_ZONE, isSolid, moveWithCollision, nearestWalkable, viewSize, clampCamera, cameraFollow, centerCamera, smoothCamera, parallaxOffset, mapMarkup, sceneryMarkup, labelsMarkup } from "./lounge-map.js";
+import { createLoungeVoiceView } from "./lounge-voice.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 export const ROOM = { width: WORLD.width, height: WORLD.height, minX: 0, maxX: WORLD.width, minY: 0, maxY: WORLD.height };
@@ -78,7 +79,7 @@ function asLoungeState(data) {
 
 export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, buddyViewBox, getOrgs = () => [], getBuddy, reduced = () => false,
     doc = globalThis.document, raf = globalThis.requestAnimationFrame?.bind(globalThis), now = () => globalThis.performance?.now?.() ?? Date.now(),
-    ResizeObserver: Observer = globalThis.ResizeObserver, deadZone = DEAD_ZONE }) {
+    ResizeObserver: Observer = globalThis.ResizeObserver, deadZone = DEAD_ZONE, desktop = false }) {
     const $ = (id) => doc.getElementById(id);
     const nodes = new Map();
     let lounge = { status: "idle", serverUrl: "", serverUrlSource: null, org: null, self: null, members: [], error: null };
@@ -99,6 +100,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     let cam = centerCamera(SPAWN, view);
     let camGoal = cam;
     let appliedCam = null;
+    let voice = null;
 
     function mountScene() {
         const map = $("loungeMap");
@@ -152,7 +154,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
 
     function chromeMarkup(member, self) {
         const marker = self ? '<rect class="lounge-self-marker" x="-14" y="-1" width="28" height="3"/>' : "";
-        return `${marker}<text class="lounge-label" x="0" y="14" font-size="10" text-anchor="middle">${esc(member.login)}</text>`;
+        return `${marker}<circle class="lounge-voice-ring" cx="21" cy="-26" r="5" aria-hidden="true"/><text class="lounge-label" x="0" y="14" font-size="10" text-anchor="middle">${esc(member.login)}</text>`;
     }
 
     function spriteMarkup(buddy, pose, frame, look, still) {
@@ -217,6 +219,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
             drawSprite(entry, time);
             if (next.x !== entry.target.x || next.y !== entry.target.y || time - entry.movedAt < WALK_LINGER_MS) active = true;
         }
+        voice?.position(selfPos);
         sortByDepth();
         if (followCamera(dt)) active = true;
         if (active) queueFrame();
@@ -342,6 +345,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         const nextSelfId = lounge.self?.id ?? null;
         if (lounge.status !== "connected" || String(nextSelfId) !== String(selfId)) { held.clear(); selfPos = null; pendingMove = null; }
         selfId = nextSelfId;
+        voice?.update(lounge);
         renderControls();
         renderMembers();
         renderRoom();
@@ -349,6 +353,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
 
     function unavailable() {
         available = false;
+        voice?.deactivate();
         renderControls();
     }
 
@@ -394,7 +399,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
             if (!org) return;
             action("/api/lounge/join", { org, buddy: getBuddy() });
         });
-        $("loungeLeave").addEventListener("click", () => action("/api/lounge/leave", {}));
+        $("loungeLeave").addEventListener("click", () => { voice?.deactivate(); void action("/api/lounge/leave", {}); });
         const room = $("loungeRoom");
         room.addEventListener("keydown", (event) => {
             if (!directionForKey(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -416,9 +421,12 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
 
     mountScene();
     wire();
+    voice = createLoungeVoiceView({ api, doc, desktop, onSpeaking: (speaking) => {
+        for (const [id, entry] of nodes) entry.el.setAttribute("data-speaking", String(speaking.has(id)));
+    } });
     renderControls();
     measure();
     applyCamera();
-    return { update, render, unavailable, sendMove, deactivate: stopMoving, get state() { return lounge; }, get available() { return available; },
+    return { update, render, unavailable, sendMove, deactivate() { stopMoving(); voice.deactivate(); }, get state() { return lounge; }, get available() { return available; },
         get camera() { return { ...cam }; }, get view() { return { ...view }; }, get position() { return selfPos && { ...selfPos }; } };
 }

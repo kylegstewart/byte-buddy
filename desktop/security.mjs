@@ -13,3 +13,8 @@ export function safeExternalUrl(value) {
         return url.href;
     } catch { return null; }
 }
+
+export function isMicrophonePermission(permission, details, expected, check = false) {
+    if (permission !== "media" || details?.isMainFrame !== true || !isAppDocument(details.requestingUrl, expected)) return false;
+    return check ? details.mediaType === "audio" : Array.isArray(details.mediaTypes) && details.mediaTypes.length === 1 && details.mediaTypes[0] === "audio";
+}
