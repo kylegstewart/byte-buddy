@@ -1,0 +1,23 @@
+{
+  "name": "byte-buddy-lounge-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "check": "npm test && wrangler deploy --dry-run --containers-rollout=none --outdir .wrangler/dry-run",
+    "check-config": "node check-config.mjs",
+    "predeploy": "npm run check-config",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --ip 127.0.0.1"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.2"
+  }
+}

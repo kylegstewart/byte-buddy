@@ -6,7 +6,7 @@ const MAX_ENRICH = 400;
 const ENRICH_CONCURRENCY = 6;
 const STALE_AFTER_MS = 30 * 60_000;
 
-export function createSyncService({ store, source, userId, sessionRef }) {
+export function createSyncService({ store, source, userId, sessionRef = { current: null }, allowHandoff = true }) {
     let running = null;
 
     function needsExactClosure(ticket) {
@@ -75,6 +75,7 @@ export function createSyncService({ store, source, userId, sessionRef }) {
             return { method: "direct", result: await syncDirect() };
         } catch (error) {
             if (!(error instanceof TicketSourceError)) throw error;
+            if (!allowHandoff) throw error;
             try {
                 await handoff(instanceId, error.message);
                 return { method: "handoff", error: error.message };

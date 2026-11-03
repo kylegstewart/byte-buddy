@@ -1,8 +1,22 @@
 # Byte Buddy
 
-Personal, dependency-free canvas extension combining IT-ticket progress with verified GitHub contributions. One companion, overall XP total, and level; separate ticket/GitHub accounting and analytics.
+Local-first companion combining IT-ticket progress with verified GitHub contributions. One companion, overall XP total, and level; separate ticket/GitHub accounting and analytics. Available as a standalone Windows desktop application and the original dependency-free Copilot canvas extension.
 
-## Install and update
+## Standalone desktop
+
+The desktop host reuses the existing game, reward engines, analytics,
+GitHub importer, local ticket MCP integration, and multiplayer Lounge without
+requiring Copilot or a particular editor. See [DESKTOP.md](DESKTOP.md) for Windows
+builds, fresh-start onboarding, browser/device GitHub sign-in, local Docker MCP
+configuration, security boundaries, and development commands.
+
+For cloud-hosted multiplayer without a work-laptop tunnel, the existing relay is
+prepared for Cloudflare Containers. Follow [the deployment guide](lounge-server/CLOUDFLARE.md).
+Ticket MCP data stays local; the cloud handles only Lounge authentication and
+player presence/appearance. No cloud deployment or account setup has been done.
+Network/installation acceptance depends on company policy and cannot be guaranteed.
+
+## Copilot extension install and update
 
 Install from the Copilot app (**Install extension from gist**) using the install gist, then restart Copilot. Installs and updates come from that gist; the repo is the source of truth.
 

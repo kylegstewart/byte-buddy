@@ -21,25 +21,28 @@ export class TicketSourceError extends Error {
     }
 }
 
-function readServerConfig() {
-    const file = join(copilotHome(), "mcp-config.json");
+export function readServerConfig({ configPath = join(copilotHome(), "mcp-config.json"), serverName = SERVER_NAME } = {}) {
+    const file = configPath;
     let config;
     try {
         config = JSON.parse(readFileSync(file, "utf8"));
     } catch (error) {
         throw new TicketSourceError(`Could not read ${file}: ${error.message}`);
     }
-    const entry = config?.mcpServers?.[SERVER_NAME];
-    if (!entry) throw new TicketSourceError(`MCP server '${SERVER_NAME}' is not configured.`);
-    if (entry.type && !["local", "stdio"].includes(entry.type)) throw new TicketSourceError(`MCP server '${SERVER_NAME}' is not a local (stdio) server.`);
-    if (!entry.command) throw new TicketSourceError(`MCP server '${SERVER_NAME}' has no command.`);
+    const entry = config?.mcpServers?.[serverName];
+    if (!entry) throw new TicketSourceError(`MCP server '${serverName}' is not configured.`);
+    if (entry.type && !["local", "stdio"].includes(entry.type)) throw new TicketSourceError(`MCP server '${serverName}' is not a local (stdio) server.`);
+    if (typeof entry.command !== "string" || !entry.command.trim()) throw new TicketSourceError(`MCP server '${serverName}' has no command.`);
+    if (entry.args !== undefined && (!Array.isArray(entry.args) || entry.args.some((arg) => typeof arg !== "string"))) throw new TicketSourceError("MCP arguments must be an array of strings.");
+    if (entry.env !== undefined && (!entry.env || Array.isArray(entry.env) || typeof entry.env !== "object" || Object.values(entry.env).some((value) => typeof value !== "string"))) throw new TicketSourceError("MCP environment values must be strings.");
+    if (entry.cwd !== undefined && typeof entry.cwd !== "string") throw new TicketSourceError("MCP working directory must be a path.");
     return { command: entry.command, args: Array.isArray(entry.args) ? entry.args.map(String) : [], env: entry.env || {}, cwd: entry.cwd };
 }
 
 /** The developer identity the IT server is configured for, falling back to the OS account name. */
-export function resolveUserId() {
+export function resolveUserId(options) {
     try {
-        const config = readServerConfig();
+        const config = readServerConfig(options);
         const fromArgs = config.args.map((arg) => /^MCP_USERNAME=(.+)$/.exec(arg)?.[1]).find(Boolean);
         return (fromArgs || config.env.MCP_USERNAME || userInfo().username).toUpperCase();
     } catch {
@@ -47,7 +50,7 @@ export function resolveUserId() {
     }
 }
 
-function createMcpClient() {
+function createMcpClient(getConfig) {
     let child = null;
     let ready = null;
     let nextId = 1;
@@ -88,7 +91,7 @@ function createMcpClient() {
 
     function start() {
         if (ready) return ready;
-        const config = readServerConfig();
+        const config = getConfig();
         const proc = spawn(config.command, config.args, {
             cwd: config.cwd,
             env: { ...process.env, ...config.env },
@@ -183,8 +186,8 @@ export function normalizeTicket(raw) {
     };
 }
 
-export function createItSource() {
-    const client = createMcpClient();
+export function createItSource({ getConfig = readServerConfig } = {}) {
+    const client = createMcpClient(getConfig);
 
     /** Pages through every ticket assigned to the user (open and closed) so reopened tickets can be reconciled. */
     async function fetchAssignedTickets(userId, onProgress) {

@@ -1,0 +1,33 @@
+{
+  "name": "byte-buddy",
+  "version": "1.3.0",
+  "description": "A local-first companion powered by your tickets and verified GitHub contributions.",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.mjs",
+  "author": "Kyle Stewart",
+  "repository": "https://github.com/kylegstewart/byte-buddy",
+  "scripts": {
+    "start": "node scripts/desktop-start.mjs",
+    "postinstall": "node node_modules/electron/install.js",
+    "test": "node --test",
+    "test:desktop": "node scripts/desktop-smoke.mjs",
+    "test:packaged": "node scripts/desktop-smoke.mjs --packaged",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "io.github.kylegstewart.bytebuddy",
+    "productName": "Byte Buddy",
+    "asar": true,
+    "directories": { "output": "release" },
+    "files": ["*.mjs", "!*.test.mjs", "!extension.mjs", "version.json", "public/**/*", "desktop/**/*"],
+    "win": { "icon": "desktop/assets/icon.ico", "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false, "installerIcon": "desktop/assets/icon.ico", "uninstallerIcon": "desktop/assets/icon.ico" },
+    "publish": null
+  }
+}

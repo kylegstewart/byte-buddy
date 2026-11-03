@@ -14,12 +14,14 @@ const STATIC = {
     "/static/pet-motion.js": "text/javascript; charset=utf-8",
     "/static/lounge.js": "text/javascript; charset=utf-8",
     "/static/lounge-map.js": "text/javascript; charset=utf-8",
+    "/static/desktop.js": "text/javascript; charset=utf-8",
 };
 const INSTANCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_BODY = 64 * 1024;
 
-export function createBuddyServer({ store, sync, github, updater, lounge, loungeIdleMs = 30_000 }) {
+export function createBuddyServer({ store, sync, github, updater, lounge, desktop = false, loungeIdleMs = 30_000 }) {
     const token = randomBytes(24).toString("hex");
+    const nonce = randomBytes(16).toString("base64");
     const clients = new Set();
     let server;
     let port;
@@ -102,12 +104,13 @@ export function createBuddyServer({ store, sync, github, updater, lounge, lounge
     }
 
     function renderIndex(instanceId) {
-        const config = JSON.stringify({ token, instanceId }).replace(/</g, "\\u003c");
-        return readFileSync(join(PUBLIC_DIR, "index.html"), "utf8").replace("/*__BUDDY_CONFIG__*/null", config);
+        const config = JSON.stringify({ token, instanceId, ...(desktop ? { desktop: true } : {}) }).replace(/</g, "\\u003c");
+        const html = readFileSync(join(PUBLIC_DIR, "index.html"), "utf8").replace("/*__BUDDY_CONFIG__*/null", config);
+        return desktop ? html.replace("<script>window.BUDDY_CONFIG", `<script nonce="${nonce}">window.BUDDY_CONFIG`).replace("</head>", '<script type="module" src="/static/desktop.js"></script></head>') : html;
     }
 
     const POST_ROUTES = {
-        "/api/update/install": () => updater.install(),
+        ...(updater ? { "/api/update/install": () => updater.install() } : {}),
         "/api/github/sync": () => github.requestRefresh(),
         "/api/github/settings": (body) => store.setGitHubSettings(body),
         "/api/interact": (body) => store.interact(String(body.action), "ui"),
@@ -137,6 +140,11 @@ export function createBuddyServer({ store, sync, github, updater, lounge, lounge
         if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(req.headers.host || "")) return send(res, 403, { error: "Forbidden host." });
         const url = new URL(req.url, `http://127.0.0.1:${port}`);
         const path = url.pathname;
+        if (desktop) {
+            res.setHeader("Content-Security-Policy", `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return send(res, 403, { error: "Forbidden origin." });
+        }
 
         if (req.method === "GET" && path.startsWith("/i/")) {
             const instanceId = decodeURIComponent(path.slice(3));

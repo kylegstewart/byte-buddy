@@ -50,7 +50,7 @@ class LoungeHttpError extends Error {
     }
 }
 
-export function createLoungeClient({ configPath, getGitHubToken, fetch = globalThis.fetch, env = process.env,
+export function createLoungeClient({ configPath, getGitHubToken, authorizeSession = async () => true, fetch = globalThis.fetch, env = process.env,
     heartbeatMs = 15000, backoff = [1000, 2000, 5000, 10000, 20000], idleTimeoutMs = 45000 }) {
     const events = new EventEmitter();
     let config = readConfig();
@@ -101,7 +101,7 @@ export function createLoungeClient({ configPath, getGitHubToken, fetch = globalT
         let res;
         try {
             res = await fetch(`${baseUrl}${path}`, {
-                method, signal: signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+                method, redirect: "error", signal: signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
                 headers: { Authorization: auth, "Content-Type": "application/json", Accept: "application/json" },
                 body: body === undefined ? undefined : JSON.stringify(body),
             });
@@ -144,6 +144,9 @@ export function createLoungeClient({ configPath, getGitHubToken, fetch = globalT
     }
 
     async function createSession(g) {
+        const authorized = await authorizeSession(baseUrl);
+        if (g !== gen) return;
+        if (!authorized) throw new LoungeHttpError(403, "untrusted_server", "Lounge connection cancelled. No GitHub credential was sent.");
         let token;
         try {
             token = String((await getGitHubToken()) || "").trim();
@@ -195,7 +198,7 @@ export function createLoungeClient({ configPath, getGitHubToken, fetch = globalT
             kick();
             let res;
             try {
-                res = await fetch(`${baseUrl}/v1/stream`, { headers: { Authorization: `Session ${session}`, Accept: "text/event-stream" }, signal: controller.signal });
+                res = await fetch(`${baseUrl}/v1/stream`, { redirect: "error", headers: { Authorization: `Session ${session}`, Accept: "text/event-stream" }, signal: controller.signal });
             } catch {
                 throw new LoungeHttpError(0, "unreachable", "Lounge server is unreachable.");
             }

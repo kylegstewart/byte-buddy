@@ -37,10 +37,10 @@ function failure(error) {
     });
 }
 
-async function ghRequest(endpoint, query = null) {
+export async function ghRequest(endpoint, query = null, command = "gh") {
     let stdout;
     try {
-        ({ stdout } = await execFileAsync("gh", [
+        ({ stdout } = await execFileAsync(command, [
             "api", "--hostname", "github.com", "--method", query ? "POST" : "GET",
             "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2022-11-28",
             "--include", endpoint, ...(query ? ["-f", `query=${query}`] : []),

@@ -1760,6 +1760,7 @@ function wire() {
 
 // ---------- Updates ----------
 function initUpdates() {
+    if (CFG.desktop) return;
     checkForUpdates(false);
     setInterval(() => checkForUpdates(false), 6 * 60 * 60 * 1000);
     $("checkUpdates").onclick = () => checkForUpdates(true);

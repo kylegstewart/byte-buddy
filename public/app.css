@@ -384,6 +384,11 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
 .modal { width: min(340px, 100%); text-align: center; padding: 18px 18px 16px; border-radius: 12px; background: var(--db-bg); border: 2px solid var(--db-yellow); box-shadow: 0 0 0 4px color-mix(in srgb, var(--db-yellow) 25%, transparent), 0 12px 40px rgba(0,0,0,.35); animation: pop .35s cubic-bezier(.2, 1.4, .4, 1); }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } }
 .reduced .modal, .reduced .modal-backdrop, .reduced .toast { animation: none; }
+.desktop-path { overflow-wrap: anywhere; }
+.desktop-device-code { font-family: monospace; font-size: 18px; font-weight: 600; letter-spacing: 1px; }
+@media (prefers-color-scheme: dark) {
+  html[data-desktop] { --db-bg: #0d1117; --db-fg: #e6edf3; --db-muted: #9da7b3; --db-border: #30363d; --db-accent: #58a6ff; --db-green: #3fb950; --db-red: #ff7b72; }
+}
 .modal-art { width: 120px; height: 140px; margin: 0 auto; display: block; }
 .modal h2 { margin: 6px 0 4px; font-size: var(--text-title-medium, 20px); }
 .modal p { margin: 0 0 14px; color: var(--db-muted); }

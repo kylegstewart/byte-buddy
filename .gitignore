@@ -5,3 +5,9 @@ artifacts/
 node_modules/
 lounge-server/lounge.log
 lounge.json
+.tools/
+dist/
+release/
+.wrangler/
+desktop.local.json
+*.tsbuildinfo

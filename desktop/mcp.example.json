@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "information-technology": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "your-trusted-it-mcp-image:your-version"],
+      "env": {}
+    }
+  }
+}

@@ -394,7 +394,8 @@ test("wrongly attributed search results and missing numeric PR data cannot be co
 
 test("production transport is execFile with explicit host, read-only query transport, timeout, and bounded output", async () => {
     const source = await readFile(new URL("./github-source.mjs", import.meta.url), "utf8");
-    assert.match(source, /execFileAsync\("gh"/);
+    assert.match(source, /export async function ghRequest\(endpoint, query = null, command = "gh"\)/);
+    assert.match(source, /execFileAsync\(command,/);
     assert.match(source, /"--hostname", "github\.com", "--method", query \? "POST" : "GET"/);
     assert.match(source, /ghRequest\('graphql', query\)/);
     assert.match(source, /timeout: 30_000/);

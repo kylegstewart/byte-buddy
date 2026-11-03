@@ -292,6 +292,30 @@
     </section>
     <section id="panel-connections" role="tabpanel" aria-labelledby="tab-connections" class="panel connections" hidden>
       <h2 class="section-title">Connections</h2>
+      <div id="desktopConnections" class="connection-stack" hidden>
+        <section class="card connection-stack" aria-labelledby="desktopTitle">
+          <h3 id="desktopTitle" class="section-title">Standalone desktop</h3>
+          <p id="desktopStatus" class="hint" role="status" aria-live="polite"></p>
+          <p id="desktopDataPath" class="hint desktop-path"></p>
+          <div class="connection-actions"><button id="desktopOpenData" type="button" class="btn btn-ghost">Open local data folder</button></div>
+          <p class="hint">New desktop installations start with a fresh buddy. Copilot saves are never imported. Your new desktop progress is saved normally between sessions.</p>
+        </section>
+        <section class="card connection-stack" aria-labelledby="desktopGithubTitle">
+          <h3 id="desktopGithubTitle" class="section-title">GitHub account</h3>
+          <p id="desktopGithubStatus" class="hint" role="status" aria-live="polite"></p>
+          <p id="desktopGithubCode" class="desktop-device-code" hidden></p>
+          <div class="connection-actions"><button id="desktopGithubLogin" type="button" class="btn">Sign in with GitHub</button><button id="desktopGithubDevice" type="button" class="btn" hidden>Open GitHub device sign-in</button><button id="desktopGithubCancel" type="button" class="btn btn-ghost" hidden>Cancel sign-in</button><button id="desktopGithubCheck" type="button" class="btn">Check existing sign-in</button><button id="desktopInstallGithub" type="button" class="btn btn-ghost">Install GitHub CLI</button></div>
+          <p class="hint">Already signed in with gh? Check existing sign-in; no new device code is needed. Otherwise, a device code appears here before the sign-in page opens. A linked desktop profile stays pinned to its original GitHub account. Authentication never starts an activity import.</p>
+        </section>
+        <section class="card connection-stack" aria-labelledby="desktopMcpTitle">
+          <h3 id="desktopMcpTitle" class="section-title">Local ticket MCP</h3>
+          <p id="desktopMcpStatus" class="hint desktop-path"></p>
+          <label for="desktopTicketUser">Your IT username<input id="desktopTicketUser" autocomplete="off" maxlength="80" spellcheck="false"></label>
+          <label for="desktopMcpServer">MCP server name<input id="desktopMcpServer" value="information-technology" autocomplete="off" maxlength="100" spellcheck="false"></label>
+          <div class="connection-actions"><button id="desktopChooseMcp" type="button" class="btn">Choose MCP configuration and restart</button><button id="desktopDisconnectMcp" type="button" class="btn btn-ghost">Disconnect ticket sync</button></div>
+          <p class="hint">Choose a trusted JSON file with mcpServers and your local Docker/stdio command. Copilot is not required. Only search_tickets and get_ticket are called. The company network and Docker are still required for live ticket reads. The Lounge never connects to this MCP.</p>
+        </section>
+      </div>
       <p class="hint">GitHub imports only your chosen organizations and repositories, on manual sync. Existing rewards are preserved when GitHub is disabled.</p>
       <div id="savedConnections"></div>
     </section>
