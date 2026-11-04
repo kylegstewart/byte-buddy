@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-    TILE, GRID, ROWS, COLS, WORLD, SPAWN, DEAD_ZONE, LABELS,
+    TILE, GRID, ROWS, COLS, WORLD, SPAWN, DEAD_ZONE, LABELS, ZONES, PROPS, PARALLAX,
     tileAt, isSolid, moveWithCollision, nearestWalkable,
-    viewSize, clampCamera, cameraFollow, centerCamera, smoothCamera, parallaxOffset,
-    mapMarkup, labelsMarkup, sceneryMarkup,
+    viewSize, clampCamera, cameraFollow, centerCamera, smoothCamera, parallaxOffset, labelsMarkup,
 } from "./public/lounge-map.js";
 
 const center = (col, row) => ({ x: col * TILE + TILE / 2, y: row * TILE + TILE / 2 });
@@ -26,9 +25,17 @@ function reachableTiles() {
     return seen;
 }
 
-test("world is a rectangular grid larger than the view", () => {
+function zoneCentroid(zone) {
+    let x = 0, y = 0, n = 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (ZONES[r][c] === zone) { x += c; y += r; n++; }
+    return { x: x / n, y: y / n, n };
+}
+
+test("world is a rectangular grid larger than the view and matches the relay's bounds", () => {
     assert.ok(GRID.every((row) => row.length === COLS));
+    assert.equal(ZONES.length, ROWS);
     assert.deepEqual(WORLD, { width: COLS * TILE, height: ROWS * TILE });
+    assert.deepEqual(WORLD, { width: 3160, height: 1280 }, "lounge-server clamps moves to 3160x1280");
     const view = viewSize(1200, 700);
     assert.ok(WORLD.width > view.width * 2 && WORLD.height > view.height * 2);
     assert.equal(tileAt(-1, 0), "#");
@@ -39,15 +46,59 @@ test("rotated layout puts the main window wall along the top", () => {
     const count = (rows) => rows.reduce((n, row) => n + [...row].filter((ch) => ch === "B").length, 0);
     const band = Math.floor(ROWS / 4);
     assert.ok(count(GRID.slice(0, band)) > count(GRID.slice(-band)) * 2, "windows concentrate in the top quarter");
+    assert.ok(GRID.slice(0, 10).every((row) => /^o+$/.test(row)), "open sky beyond the south glass");
+});
+
+test("the floor plan is rotated 180 degrees, not mirrored", () => {
+    const bullpen = zoneCentroid("bullpen"), lobby = zoneCentroid("lobby"), conference = zoneCentroid("conference");
+    const breakRoom = zoneCentroid("break"), standup = zoneCentroid("standup"), server = zoneCentroid("server");
+    // On the plan the bullpen is east (right) and the elevators north; looking south puts them left and at the bottom.
+    assert.ok(bullpen.x < COLS / 2, "bullpen on the left");
+    assert.ok(lobby.y > ROWS * 0.7 && Math.abs(lobby.x - COLS / 2) < 10, "elevators at the bottom middle");
+    assert.ok(breakRoom.x < conference.x, "break room between the bullpen and the conference room");
+    assert.ok(standup.x < COLS / 4 && standup.y > ROWS * 0.7, "standup room in the bottom-left corner");
+    assert.ok(server.x > COLS * 0.75, "server room in the west wing on the right");
+});
+
+test("the relay's spawn band lands in the open corridor", () => {
+    for (let y = 750; y <= 810; y += 10) for (let x = 760; x <= 2420; x += 10) assert.equal(isSolid(x, y), false, `spawn ${x},${y}`);
+    const reachable = reachableTiles();
+    assert.ok(reachable.has(`${Math.floor(2420 / TILE)},${Math.floor(750 / TILE)}`));
 });
 
 test("spawn is walkable and every labelled room is reachable from it", () => {
     assert.equal(isSolid(SPAWN.x, SPAWN.y), false);
     const reachable = reachableTiles();
-    assert.equal(LABELS.length, 10);
+    assert.ok(LABELS.length >= 10);
     for (const label of LABELS) {
         const key = `${Math.floor(label.x / TILE)},${Math.floor(label.y / TILE)}`;
         assert.ok(reachable.has(key), `${label.text} at ${label.x},${label.y} is reachable`);
+    }
+});
+
+test("wall faces are solid strips directly below walls and windows", () => {
+    let faces = 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        if (GRID[r][c] !== "F") continue;
+        faces++;
+        assert.ok("#B".includes(GRID[r - 1][c]), `face at ${c},${r} hangs under a wall`);
+        const p = center(c, r);
+        assert.equal(isSolid(p.x, p.y), true);
+    }
+    assert.ok(faces > 300);
+});
+
+test("chairs stay walkable and office chairs face a desk", () => {
+    const chairs = PROPS.filter((prop) => prop.type === "chair");
+    assert.ok(chairs.length >= 80, `${chairs.length} chairs`);
+    const step = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
+    for (const chair of chairs) {
+        // Chairs centred between two tiles (bistro stools, guest pairs) belong to the tile up and to the left.
+        const c = Math.floor(chair.x - 1e-6), r = Math.floor(chair.y - 1e-6);
+        assert.equal(GRID[r][c], "c", `chair at ${c},${r}`);
+        if (chair.style !== "office") continue;
+        const [dc, dr] = step[chair.facing];
+        assert.equal(GRID[r + dr][c + dc], "N", `office chair at ${c},${r} faces its desk`);
     }
 });
 
@@ -76,7 +127,7 @@ test("doorways are passable in both directions", () => {
             }
         }
     }
-    assert.ok(crossed >= 10, `crossed ${crossed} door tiles`);
+    assert.ok(crossed >= 30, `crossed ${crossed} door tiles`);
 });
 
 test("diagonal movement slides along a wall instead of sticking", () => {
@@ -143,18 +194,24 @@ test("viewport adapts to panel size", () => {
     assert.equal(wide.height, 270);
 });
 
-test("parallax: far layers move less than near layers", () => {
+test("parallax: far layers pan less than near layers and the horizon holds near eye level", () => {
     const cam = { x: 1000, y: 400 };
-    const far = parallaxOffset(cam, 0.15), mid = parallaxOffset(cam, 0.4), near = parallaxOffset(cam, 0.7);
-    const shift = (o) => cam.x - o.x;
-    assert.ok(shift(far) < shift(mid) && shift(mid) < shift(near));
-    assert.deepEqual(parallaxOffset({ x: 0, y: 0 }, 0.15), { x: 0, y: 0 });
+    const shift = (layer) => cam.x - parallaxOffset(cam, layer).x;
+    const lift = (layer) => cam.y - parallaxOffset(cam, layer).y;
+    const [far, mid, near] = PARALLAX;
+    assert.deepEqual(PARALLAX.map((layer) => layer.id), ["loungeSceneryFar", "loungeSceneryMid", "loungeSceneryNear"]);
+    assert.ok(shift(far) < shift(mid) && shift(mid) < shift(near), "horizontal depth order");
+    assert.ok(lift(far) <= lift(mid) && lift(mid) <= lift(near), "vertical depth order");
+    for (const layer of PARALLAX) assert.ok(layer.y < 0.25 && layer.y < layer.x, `${layer.id} keeps a small vertical drift`);
+    assert.deepEqual(parallaxOffset({ x: 0, y: 0 }, far), { x: 0, y: 0 });
+    assert.deepEqual(parallaxOffset({ x: 100, y: 100 }, 0.5), { x: 50, y: 50 }, "a plain number still applies to both axes");
 });
 
-test("markup renders map, upright labels, and three scenery depth layers", () => {
-    const map = mapMarkup(), labels = labelsMarkup(), scenery = sceneryMarkup();
-    assert.ok(map.length > 1000 && labels.length > 100);
-    for (const layer of ["far", "mid", "near"]) assert.ok(scenery[layer].length > 100, `${layer} layer`);
+test("labels render upright with every room name", () => {
+    const labels = labelsMarkup();
     for (const label of LABELS) assert.ok(labels.includes(label.text));
     assert.doesNotMatch(labels, /rotate\(/, "labels stay upright");
+    for (const name of ["Bullpen", "Conference", "Break Room", "Wellness", "Server Room", "Standup", "Elevators", "Lounge", "Offices"]) {
+        assert.ok(LABELS.some((label) => label.text === name), name);
+    }
 });

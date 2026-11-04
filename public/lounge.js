@@ -1,5 +1,6 @@
 // The Lounge: shared org room UI. Pure helpers are exported for tests; createLoungeView owns the panel DOM.
-import { WORLD, SPAWN, DEAD_ZONE, isSolid, moveWithCollision, nearestWalkable, viewSize, clampCamera, cameraFollow, centerCamera, smoothCamera, parallaxOffset, mapMarkup, sceneryMarkup, labelsMarkup } from "./lounge-map.js";
+import { WORLD, SPAWN, DEAD_ZONE, PARALLAX, isSolid, moveWithCollision, nearestWalkable, viewSize, clampCamera, cameraFollow, centerCamera, smoothCamera, parallaxOffset, labelsMarkup } from "./lounge-map.js";
+import { paintMap, paintScenery } from "./lounge-art.js";
 import { createLoungeVoiceView } from "./lounge-voice.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -9,7 +10,6 @@ const BUDDY_WIDTH = 80;
 const SEND_INTERVAL_MS = 100;
 const REMOTE_SPEED = SPEED * 1.25;
 const SNAP_DISTANCE = 120;
-const PARALLAX = [["loungeSceneryFar", 0.15], ["loungeSceneryMid", 0.4], ["loungeSceneryNear", 0.7]];
 const WALK_FRAME_MS = 120;
 const WALK_LINGER_MS = 150;
 const KEY_DIRECTIONS = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
@@ -86,6 +86,50 @@ export function chatLines(text, columns = 28) {
     return lines;
 }
 
+const hex = (color) => `#${color.toString(16).padStart(6, "0")}`;
+
+/** Uploads a painted RGBA buffer into a blob (or data) URL the SVG can show as one pixelated image. */
+async function imageUrl(doc, art) {
+    const canvas = doc.createElement("canvas");
+    canvas.width = art.width;
+    canvas.height = art.height;
+    canvas.getContext("2d").putImageData(new ImageData(art.data, art.width, art.height), 0, 0);
+    const blob = canvas.toBlob && globalThis.URL?.createObjectURL ? await new Promise((resolve) => canvas.toBlob(resolve, "image/png")) : null;
+    const url = blob ? URL.createObjectURL(blob) : canvas.toDataURL("image/png");
+    // Decode up front so every layer appears in the same frame instead of popping in one by one.
+    const Picture = doc.defaultView?.Image || globalThis.Image;
+    const picture = Picture ? new Picture() : null;
+    if (picture) {
+        picture.src = url;
+        try { await picture.decode?.(); } catch { /* the SVG still loads it, just a frame later */ }
+    }
+    return { url, picture };
+}
+
+const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
+let sceneArt = null;
+
+/** Paints the skyline and the office once per page, yielding between the heavy steps so the UI stays responsive. */
+export function loadSceneArt(doc) {
+    sceneArt ||= (async () => {
+        await pause();
+        const layers = {};
+        // Keep only the encoded images; the raw RGBA buffers (tens of MB) can be collected.
+        for (const [key, { canvas, x, y, fill }] of Object.entries(paintScenery())) {
+            layers[key] = { x, y, fill, width: canvas.width, height: canvas.height, ...(await imageUrl(doc, canvas)) };
+        }
+        await pause();
+        const map = paintMap();
+        return { layers, map: { ...(await imageUrl(doc, map)), width: map.width, height: map.height } };
+    })();
+    sceneArt.catch(() => { sceneArt = null; });
+    return sceneArt;
+}
+
+export function imageMarkup(url, x, y, width, height) {
+    return `<image href="${url}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none" style="image-rendering: pixelated" aria-hidden="true"/>`;
+}
+
 function asLoungeState(data) {
     const value = data?.lounge ?? data?.result ?? data;
     return value && typeof value === "object" && typeof value.status === "string" ? value : null;
@@ -118,13 +162,27 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     let chatSending = false;
 
     function mountScene() {
-        const map = $("loungeMap");
-        if (!map || map.dataset?.mounted) return;
-        const scenery = sceneryMarkup();
-        map.innerHTML = mapMarkup();
-        if (map.dataset) map.dataset.mounted = "1";
-        const layers = { loungeSceneryFar: scenery.far, loungeSceneryMid: scenery.mid, loungeSceneryNear: scenery.near, loungeLabels: labelsMarkup() };
-        for (const [id, html] of Object.entries(layers)) { const node = $(id); if (node) node.innerHTML = html; }
+        const labels = $("loungeLabels");
+        if (labels && !labels.innerHTML) labels.innerHTML = labelsMarkup();
+    }
+
+    let artRequested = false;
+    /** The pixel art needs a real canvas, so it is painted the first time the room is actually on screen. */
+    function mountArt() {
+        if (artRequested || typeof doc.createElement !== "function" || typeof globalThis.ImageData !== "function") return;
+        artRequested = true;
+        loadSceneArt(doc).then(({ layers, map }) => {
+            const ids = { far: "loungeSceneryFar", mid: "loungeSceneryMid", near: "loungeSceneryNear" };
+            for (const [key, layer] of Object.entries(layers)) {
+                const node = $(ids[key]);
+                if (!node) continue;
+                const { width, height } = layer;
+                const below = layer.fill === null ? "" : `<rect x="${layer.x}" y="${layer.y + height}" width="${width}" height="${WORLD.height * 2}" fill="${hex(layer.fill)}"/>`;
+                node.innerHTML = imageMarkup(layer.url, layer.x, layer.y, width, height) + below;
+            }
+            const mapNode = $("loungeMap");
+            if (mapNode) mapNode.innerHTML = imageMarkup(map.url, 0, 0, map.width, map.height);
+        }, () => { artRequested = false; });
     }
 
     function applyCamera() {
@@ -135,9 +193,9 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         if (appliedCam === key) return;
         appliedCam = key;
         room.setAttribute("viewBox", key);
-        for (const [id, factor] of PARALLAX) {
-            const offset = parallaxOffset({ x, y }, factor);
-            $(id)?.setAttribute("transform", `translate(${Math.round(offset.x * 4) / 4} ${Math.round(offset.y * 4) / 4})`);
+        for (const layer of PARALLAX) {
+            const offset = parallaxOffset({ x, y }, layer);
+            $(layer.id)?.setAttribute("transform", `translate(${Math.round(offset.x * 4) / 4} ${Math.round(offset.y * 4) / 4})`);
         }
     }
 
@@ -145,6 +203,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     function measure() {
         const rect = $("loungeRoom")?.getBoundingClientRect?.();
         if (!rect || !(rect.width > 0) || !(rect.height > 0)) return;
+        mountArt();
         const next = viewSize(rect.width, rect.height);
         if (next.width === view.width && next.height === view.height) return;
         const focus = selfPos || { x: cam.x + view.width / 2, y: cam.y + view.height / 2 };
