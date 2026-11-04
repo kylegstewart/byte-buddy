@@ -360,8 +360,14 @@
           <g id="loungeMap"></g>
           <g id="loungeLabels"></g>
           <g id="loungeMembersLayer"></g>
+          <g id="loungeChatLayer" aria-live="polite" aria-relevant="additions text"></g>
         </svg>
-        <p class="hint">Click or focus the room, then use the arrow keys to move your buddy.</p>
+        <form id="loungeChatForm" class="lounge-row lounge-chat" aria-label="Lounge chat">
+          <label for="loungeChatInput">Say something<input id="loungeChatInput" type="text" maxlength="160" placeholder="Message the room…" autocomplete="off" aria-describedby="loungeChatHint" disabled></label>
+          <button id="loungeChatSend" type="submit" class="btn btn-primary" disabled>Send</button>
+        </form>
+        <p id="loungeChatHint" class="hint">Messages appear above your buddy for 6 seconds. Up to 160 characters.</p>
+        <p class="hint">Focus the room and use arrow keys to move. Press Enter to chat, or Esc while typing to return to the room.</p>
       </section>
     </div>
   </main>

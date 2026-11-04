@@ -9,6 +9,8 @@ const ORG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MOVE_INTERVAL_MS = 100;
 const REQUEST_TIMEOUT_MS = 10_000;
+const CHAT_DURATION_MS = 6000;
+const CHAT_MAX_LENGTH = 160;
 
 const clamp = (value, min, max) => Math.round(Math.min(max, Math.max(min, value)) * 10) / 10;
 const pick = (value, pattern) => (typeof value === "string" && pattern.test(value) ? value : null);
@@ -94,7 +96,7 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
         const { url, source: urlSource } = source();
         return {
             status, serverUrl: url, serverUrlSource: urlSource, org, self: self ? { ...self } : null,
-            members: [...members.values()].map((member) => ({ ...member })).sort((a, b) => a.login.localeCompare(b.login)),
+            members: [...members.values()].map(({ chat, ...member }) => chat?.expiresAt > Date.now() ? { ...member, chat: { ...chat } } : member).sort((a, b) => a.login.localeCompare(b.login)),
             error: error ? { ...error } : null,
         };
     }
@@ -182,6 +184,10 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
             const member = members.get(data?.id);
             if (!member) return;
             members.set(data.id, { ...member, x: data.x, y: data.y });
+        } else if (name === "chat") {
+            const member = members.get(data?.id);
+            if (!member || typeof data.text !== "string" || !data.text.trim() || data.text.length > CHAT_MAX_LENGTH) return;
+            members.set(data.id, { ...member, chat: { text: data.text, expiresAt: Date.now() + CHAT_DURATION_MS } });
         } else if (name === "leave") {
             if (!members.delete(data?.id)) return;
         } else if (name === "replaced") {
@@ -366,6 +372,18 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
         return state();
     }
 
+    async function chat({ text } = {}) {
+        if (closed || status !== "connected" || !session) throw new BuddyError("not_connected", "Join the Lounge before chatting.");
+        const message = typeof text === "string" ? text.trim() : "";
+        if (!message || message.length > CHAT_MAX_LENGTH) throw new BuddyError("bad_message", `Messages must contain 1-${CHAT_MAX_LENGTH} characters.`);
+        try {
+            await request("POST", "/v1/chat", { auth: `Session ${session}`, body: { text: message } });
+            return state();
+        } catch (error) {
+            throw new BuddyError(error.code || "chat_error", error.message || "Could not send the message.");
+        }
+    }
+
     async function setServerUrl(url) {
         if (source().source === "env") throw new BuddyError("env_override", "The Lounge server URL is set by BYTE_BUDDY_LOUNGE_URL.");
         const raw = typeof url === "string" ? url.trim() : "";
@@ -405,7 +423,7 @@ export function createLoungeClient({ configPath, getGitHubToken, authorizeSessio
     }
 
     return {
-        events, state, join, leave, voice, setServerUrl, move: moveTo,
+        events, state, join, leave, chat, voice, setServerUrl, move: moveTo,
         async close() {
             closed = true;
             await leave();

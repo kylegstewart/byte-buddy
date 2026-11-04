@@ -272,6 +272,47 @@ test("snapshot, join broadcast, org isolation, and leave on stream close", async
     await leaveAll(main.base, sa, sb, sc);
 });
 
+test("chat is authenticated, organization-scoped, bounded, rate limited and not stored", async (t) => {
+    const { lounge, base } = await startLounge();
+    assert.equal((await post(base, "/v1/chat", { body: { text: "Hello" } })).status, 401);
+    const sa = await session(base, "tok-alice");
+    const sb = await session(base, "tok-bob");
+    const sc = await session(base, "tok-carol", "org-b");
+    const auth = `Session ${sa}`;
+    const notIn = await post(base, "/v1/chat", { auth, body: { text: "Hello" } });
+    assert.deepEqual([notIn.status, notIn.body.code], [409, "not_in_room"]);
+    const alice = await stream(base, sa);
+    const bob = await stream(base, sb);
+    const carol = await stream(base, sc);
+    t.after(() => { alice.close(); bob.close(); carol.close(); });
+    await alice.next("snapshot");
+    await bob.next("snapshot");
+    await carol.next("snapshot");
+    for (const text of [undefined, null, 123, [], "", "  \n\t ", "\u0000\u0001", "x".repeat(161)]) {
+        const invalid = await post(base, "/v1/chat", { auth, body: { text } });
+        assert.deepEqual([invalid.status, invalid.body.code], [400, "bad_message"]);
+    }
+    const sent = await post(base, "/v1/chat", { auth, body: { id: 2, org: "org-b", text: "  Hello\n<script>room</script>\u0000!  " } });
+    assert.deepEqual([sent.status, sent.body], [200, { ok: true }]);
+    const message = { id: 1, text: "Hello <script>room</script> !" };
+    assert.deepEqual(await alice.next("chat"), message);
+    assert.deepEqual(await bob.next("chat"), message);
+    const limited = await post(base, "/v1/chat", { auth, body: { text: "Too soon" } });
+    assert.deepEqual([limited.status, limited.body.code], [429, "rate_limited"]);
+    assert.equal((await post(base, "/v1/move", { auth, body: { x: 1000, y: 780 } })).status, 200, "chat does not throttle movement");
+    assert.equal((await post(base, "/v1/chat", { auth: `Session ${sb}`, body: { text: "x".repeat(160) } })).status, 200);
+    assert.deepEqual(await alice.next("chat"), { id: 2, text: "x".repeat(160) });
+    assert.equal(carol.of("chat").length, 0);
+    assert.ok([...lounge.rooms.get("org-a").values()].every((member) => !Object.hasOwn(member, "chat") && !Object.hasOwn(member, "text")), "no messages are retained in room state");
+    const replacement = await session(base, "tok-alice");
+    const rejoined = await stream(base, replacement);
+    t.after(() => rejoined.close());
+    const snapshot = await rejoined.next("snapshot");
+    assert.ok(snapshot.members.every((member) => !member.chat));
+    const stale = await post(base, "/v1/chat", { auth, body: { text: "Old session" } });
+    assert.deepEqual([stale.status, stale.body.code], [409, "not_in_room"]);
+});
+
 test("move requires a live stream and is rate limited", async () => {
     const sa = await session(main.base, "tok-alice");
     const notIn = await post(main.base, "/v1/move", { auth: `Session ${sa}`, body: { x: 10, y: 70 } });

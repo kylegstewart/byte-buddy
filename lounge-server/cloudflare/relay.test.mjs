@@ -55,7 +55,7 @@ test("all routes, users, organizations, hosts, and credentials address the same 
         ["GET", "/healthz"], ["GET", "/v1/stream?s=opaque-session"],
         ["POST", "/v1/session"], ["POST", "/v1/move"],
         ["POST", "/v1/heartbeat"], ["POST", "/v1/leave"],
-        ["POST", "/v1/voice"],
+        ["POST", "/v1/voice"], ["POST", "/v1/chat"],
     ];
     for (const organization of ["org-a", "org-b"]) {
         for (const [method, path] of routes) {
@@ -69,7 +69,7 @@ test("all routes, users, organizations, hosts, and credentials address the same 
             assert.equal(request.bodyUsed, false);
         }
     }
-    assert.equal(fixture.names.length, 14);
+    assert.equal(fixture.names.length, 16);
     assert.deepEqual([...new Set(fixture.names)], [SINGLETON_NAME]);
     assert.deepEqual([...new Set(fixture.identifiers)], [`id:${SINGLETON_NAME}`]);
 });
