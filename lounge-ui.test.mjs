@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { SPEED, approach, clampPoint, createLoungeView, diffMembers, directionForKey, heldVelocity, memberTransform, statusText } from "./public/lounge.js";
+import { SPEED, approach, clampPoint, createLoungeView, diffMembers, directionForKey, heldVelocity, loadSceneArt, memberTransform, statusText } from "./public/lounge.js";
 
 const html = readFileSync(new URL("./public/index.html", import.meta.url), "utf8");
 const app = readFileSync(new URL("./public/app.js", import.meta.url), "utf8");
@@ -77,11 +77,11 @@ class FakeNode {
     getBoundingClientRect() { return { left: 0, top: 0, width: 160, height: 120 }; }
 }
 
-function harness() {
+function harness(docExtras = {}) {
     const ids = ["loungeUrlForm", "loungeUrl", "loungeUrlSave", "loungeUrlNote", "loungeOrg", "loungeOrgHint", "loungeJoin", "loungeLeave",
         "loungeStatus", "loungeRoom", "loungeMembersLayer", "loungeMemberList", "loungeSceneryFar", "loungeSceneryMid", "loungeSceneryNear", "loungeMap", "loungeLabels"];
     const elements = Object.fromEntries(ids.map((id) => [id, new FakeNode(id)]));
-    const doc = { getElementById: (id) => elements[id] || null, createElementNS: (_ns, tag) => new FakeNode(tag) };
+    const doc = { getElementById: (id) => elements[id] || null, createElementNS: (_ns, tag) => new FakeNode(tag), ...docExtras };
     const calls = [];
     const frames = [];
     const clock = { t: 1000 };
@@ -253,4 +253,25 @@ test("camera holds inside the dead zone, scrolls near edges, and parallax keeps 
     assert.equal(camX(), settled, "camera settles without recentering");
     assert.equal(other.style.transform, "translate(1650px, 770px)", "remote buddy stays at its world position");
     assert.ok(shift("loungeSceneryFar") > shift("loungeSceneryMid") && shift("loungeSceneryMid") > shift("loungeSceneryNear"), "far layers drift less on screen");
+});
+
+test("the pixel-art office and Indianapolis skyline mount once the room is on screen", async () => {
+    const restore = globalThis.ImageData;
+    globalThis.ImageData = class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } };
+    try {
+        const uploads = [];
+        const createElement = (tag) => ({ tag, getContext: () => ({ putImageData: (image) => uploads.push([image.width, image.height]) }), toDataURL: () => "data:image/png;base64,AA==" });
+        const { elements } = harness({ createElement });
+        await loadSceneArt();
+        await flush();
+        assert.match(elements.loungeMap.innerHTML, /<image href="data:image\/png;base64,AA=="[^>]*width="3160" height="1280"[^>]*image-rendering: pixelated/);
+        for (const id of ["loungeSceneryFar", "loungeSceneryMid", "loungeSceneryNear"]) assert.match(elements[id].innerHTML, /^<image /, id);
+        assert.match(elements.loungeSceneryNear.innerHTML, /<rect [^>]*fill="#[0-9a-f]{6}"/, "solid layers continue below their image");
+        assert.doesNotMatch(elements.loungeSceneryMid.innerHTML, /<rect/, "the skyline layer stays open below the towers");
+        assert.match(elements.loungeLabels.innerHTML, /Conference/);
+        assert.deepEqual(uploads.at(-1), [3160, 1280]);
+        assert.equal(uploads.length, 4, "three scenery layers and the office, painted once");
+    } finally {
+        globalThis.ImageData = restore;
+    }
 });

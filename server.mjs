@@ -14,6 +14,7 @@ const STATIC = {
     "/static/pet-motion.js": "text/javascript; charset=utf-8",
     "/static/lounge.js": "text/javascript; charset=utf-8",
     "/static/lounge-map.js": "text/javascript; charset=utf-8",
+    "/static/lounge-art.js": "text/javascript; charset=utf-8",
     "/static/lounge-voice.js": "text/javascript; charset=utf-8",
     "/static/desktop.js": "text/javascript; charset=utf-8",
 };

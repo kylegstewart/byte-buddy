@@ -1,91 +1,371 @@
-// The Lounge office map: the floor plan (rotated 180°) as a tile grid, collision, the dead-zone camera, and the Indianapolis scenery.
-// Grid codes: # wall, B window, D doorway, R couch, N desk, S counter, c chair, . floor, o open outdoors (scenery shows), x rooftop.
+// The Lounge office map: the team floor plan as a tile grid, collision, the dead-zone camera, and parallax helpers.
+// The plan below is authored north-up, exactly like the floor plan drawing, then rotated 180° so the camera looks south,
+// out the main window wall. Pixel art for the map and the Indianapolis skyline lives in lounge-art.js.
+//
+// Grid codes: # wall, B window, D doorway, F wall face (the visible, solid front of a wall), . floor, c chair (walkable),
+// N desk or table top, S counter, K cabinet or shelf, R couch or armchair, T round or low table, P plant,
+// M machine (server rack, fridge, printer), o open outdoors (scenery shows through), x building core (other tenants).
 export const TILE = 20;
-export const GRID = [
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBooooooooooooBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBooooooooooooBBBBBBBBBBBBBBBBBBBBBBBBBB#BBBBBBBB#BBBBBBBBBBBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB......NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...BooooooooooooBB........................#......NN#NN.......BBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB......NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...BooooooooooooBB........................#......NN#NN.......BBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB.......ccNNNNc.......cNNNNc.......cNNNNc....BooooooooooooBB...cc.cc..c...c...c.....#....c.NN#NNcc.....BBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB......NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...BBBBBBBBBBBBBBB...NNNNNNNNNNNNNNNNN....#..NNNNNN#NNNNN....BBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB......NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...D..NNN.NN.NNN##...NNNNNNNNNNNNNNNNN....#..NNNNNN#NNNNN....BBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB......NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...D..NNN.NN.NNN##..cNNNNNNNNNNNNNNNNNcc..#..NNNNNN#NNNNN....BBoooooooooooooooooooooooooo",
-    "oooooooooooooooooooooooooooB.......ccNNNNc.......cNNNNc......ccNNNNc....D............##...NNNNNNNNNNNNNNNNNc...#..NNNNNN#NNNNN....BBoooooooooooooooooooooooooo",
-    "ooooooooooooooBBBBBBBBBBBBBB.......ccNNNNc.......cNNNNc......ccNNNNc....#............##...NNNNNNNNNNNNNNNNN....#........#.........BBBBBBBBBBBBBBBooooooooooooo",
-    "ooooooooooooooBBBBBBBBBBBBBB......NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...#SSSSSSSSSSSS##....cc.c..cc..cc..c.....#........#.........##BBBBBBBBBBBBBooooooooooooo",
-    "ooooooooooooooB...................NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...#SSSSSSSSSSSS##........................#........#.....RRRR##NRRRRRRRNNNNBooooooooooooo",
-    "ooooooooooooooB...................NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...#SSSSSSSSSSSS##........................#........#.....RRRR##NN......NNNNBooooooooooooo",
-    "ooooooooooooooB...NNNNNNNN.........ccNNNNc.......cNNNNc......ccNNNNc....###############DDDDD######################DDDD######DDD#####NN......NNNNBooooooooooooo",
-    "ooooooooooooooB...NNNNNNNN........NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...#.........................................................##NN......NNN.Booooooooooooo",
-    "ooooooooooooooB...NNNNNNNN........NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...#.........................................................##NN..........Booooooooooooo",
-    "ooooooooooooooB....cNNNNcc........NNNNNNNNN....NNNNNNNNN....NNNNNNNNN...#.........................................................##NN..........Booooooooooooo",
-    "ooooooooooooooB...NNNNNNNN.........ccNNNNc.....NNNNNNNNN....NNNNNNNNN...#.........................................................##NNNNNNN.....Booooooooooooo",
-    "ooooooooooooooB...NNNNNNNN.........ccNNNNc.......cNNNNc......ccNNNNc....#............########DDDD####DDD###############...##########NNNNNNN.....Booooooooooooo",
-    "oBBBBBBBBBBBBBB...NNNNNNNN...........NNNN.........NNNN.........NNNN.....#............##...........#........#..........D...D.......##NNNNNNN##DDD#BBBBBBBBBBBBB",
-    "oB................ccNNNNcc..............................................#............##NNNNNNN....#........#..........D...D.SSSSS.##NNNNNNN#....#NN.......RRBB",
-    "oB................ccNNNNcc..............................................#............##NNNNNNN....#...NNNNN#..........D...D.SSSSS.##########....#NNc......RRBB",
-    "oB..NNNNNNNNN.....NNNNNNNN..............................................D............##NNNNNNN....#...NNNNNN..........#...#.SSSSS.##............#NNcc.....RRBB",
-    "oB..NNNNNNNNN.....NNNNNNNN..............................................D............##..c........#....ccNNN...SSSSSS##...#.SSSSS.##......RRR...#NNNNNN...RRBB",
-    "oB..NNNNNNNNN.....NNNNNNNN..............................................D............##...........#......NNN...SSSSSS##...#.......##..NRRNRRR...#NNNNNN...RRBB",
-    "oB...ccNNNNcc......cNNNNcc..........#DDDD###################################DDDDDD#####################################DDD##########..NRRNRRR...#NNNNNN...RRBB",
-    "oB..NNNNNNNNN.....NNNNNNNN.......NNN#DDDD###################################DDDDDD#####################################DDD##########......RRR...#.........RRBB",
-    "oB..NNNNNNNNN.....NNNNNNNN.......NNN#.....................................................................................D..........RRRRRR.....D.........RRBB",
-    "oB..NNNNNNNNN.....NNNNNNNN.......NNN#.....................................................................................D..........RRRRRR.....D....NNN....BB",
-    "oB...ccNNNNcc......cNNNNc........NNN#.....................................................................................D..........RRRRRR.....D....NNNN...BB",
-    "oB...ccNNNNcc......cNNNNc........NNN#.....................................................................................#.....................D....NNNN...BB",
-    "oB.....NNNN.........NNNN.........NNN#####################################.............#####################################.....................D....NNNN...BB",
-    "oB...............................NNN#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.....................#.....NN....BB",
-    "oB..................................#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.....................#############B",
-    "oB..................................#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.................................BB",
-    "oB####DDD#DDD######......##DDDD######xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.................................BB",
-    "oB.......##.......#......#..........#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#####DDD######DDD#####DDDD#####DDDDB",
-    "oB.......##.......#......#..........#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.......#........#........#.......BB",
-    "oB.......##.......#RRRR..#.ccNNNNc..#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.......#........#........#.......BB",
-    "oB..NNNNN##..NNNNN#RRRR..#.cNNNNNN..#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.......#........#........#.......BB",
-    "oB..NNNNNN...NNNNN#RRRR..#..NNNNNN..#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#NNNNN..#NNNNN...#NNNNN...#NNNNN..BB",
-    "oB..NNNNNN...NNNNN#RRRR..#..NNNNNN..#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#NNNNN..NNNNNN...#NNNNN...#NNNNN..BB",
-    "oB..NNNNN##..NNNNN#RRRR..#..NNNNNc..#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#NNNNN..#NNNNN...#NNNNN...#NNNNN..BB",
-    "oB....cc.##....cc.#RRRR..#..c.NNcc..#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.cc....#.cc.....#.cc.....#NNcc...BB",
-    "oB.......##.......#RRRR..#..........#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.......#........#........#NN.....BB",
-    "o##################......#..........#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.......#........#........#NN.....BB",
-    "x####################################xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx###################################B",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx#.............#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx###############xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-];
-export const ROWS = GRID.length;
-export const COLS = GRID[0].length;
+const PLAN_COLS = 158;
+const PLAN_ROWS = 63;
+export const ROWS = 64;
+export const COLS = PLAN_COLS;
 export const WORLD = { width: COLS * TILE, height: ROWS * TILE };
 export const SPAWN = { x: 1600, y: 780 };
 export const DEAD_ZONE = { x: 0.3, y: 0.3 };
+
+const FLIP = { n: "s", s: "n", e: "w", w: "e" };
+
+/** Builds the north-up plan: cells, floor zones, and furniture props, all in plan tile coordinates. */
+function buildPlan() {
+    const cells = Array.from({ length: PLAN_ROWS }, () => Array(PLAN_COLS).fill("x"));
+    const zones = Array.from({ length: PLAN_ROWS }, () => Array(PLAN_COLS).fill(""));
+    const props = [];
+    const box = (x0, y0, x1, y1, ch) => {
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (y >= 0 && y < PLAN_ROWS && x >= 0 && x < PLAN_COLS) cells[y][x] = ch;
+    };
+    const room = (zone, x0, y0, x1, y1) => {
+        box(x0, y0, x1, y1, ".");
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) zones[y][x] = zone;
+    };
+    const wall = (x0, y0, x1, y1) => box(x0, y0, x1, y1, "#");
+    const door = (x0, y0, x1, y1) => box(x0, y0, x1, y1, "D");
+    const glass = (x0, y0, x1, y1) => box(x0, y0, x1, y1, "B");
+    // Solid furniture fills whole tiles; rect props are inclusive plan tiles.
+    const item = (type, ch, x0, y0, x1, y1, extra = {}) => { box(x0, y0, x1, y1, ch); props.push({ type, x0, y0, x1, y1, ...extra }); };
+    const desk = (x0, y0, x1, y1, material = "walnut") => item("surface", "N", x0, y0, x1, y1, { material });
+    const counter = (x0, y0, x1, y1) => item("surface", "S", x0, y0, x1, y1, { material: "stone" });
+    const cabinet = (x0, y0, x1, y1, kind, facing = "n") => item(kind, "K", x0, y0, x1, y1, { facing });
+    const couch = (x0, y0, x1, y1, facing, color) => item("couch", "R", x0, y0, x1, y1, { facing, color });
+    const machine = (x0, y0, x1, y1, kind, facing = "n") => item(kind, "M", x0, y0, x1, y1, { facing });
+    const plant = (x, y, kind = "fig") => item("plant", "P", x, y, x, y, { kind });
+    const rug = (x0, y0, x1, y1, color) => props.push({ type: "rug", x0, y0, x1, y1, color });
+    const decor = (type, x0, y0, x1, y1, extra = {}) => props.push({ type, x0, y0, x1, y1, ...extra });
+    // Chairs and round tables use tile-center coordinates and may sit between tiles.
+    const chair = (x, y, facing, style = "office") => {
+        const tx = Math.round(x), ty = Math.round(y);
+        if (cells[ty][tx] === ".") cells[ty][tx] = "c";
+        props.push({ type: "chair", cx: x, cy: y, facing, style });
+    };
+    const roundTable = (x, y, r, style = "walnut") => {
+        for (let ty = Math.floor(y - r); ty <= Math.ceil(y + r); ty++) for (let tx = Math.floor(x - r); tx <= Math.ceil(x + r); tx++) {
+            if (Math.hypot(tx - x, ty - y) <= r + 0.05) cells[ty][tx] = "T";
+        }
+        props.push({ type: "roundTable", cx: x, cy: y, r, style });
+    };
+
+    // Rooms. Later rooms win where rectangles overlap; walls are carved afterwards.
+    room("hall", 2, 17, 34, 20);
+    room("lounge", 15, 17, 34, 33);
+    for (const [x0, x1] of [[2, 9], [11, 18], [20, 26], [28, 34]]) room("office", x0, 8, x1, 15);
+    room("office", 2, 22, 13, 33);
+    room("office", 15, 35, 26, 42);
+    room("office", 19, 33, 26, 34);
+    room("server", 28, 28, 34, 34);
+    room("hall", 36, 22, 121, 26);
+    room("hall", 36, 28, 39, 35);
+    room("wellness", 41, 28, 49, 34);
+    room("office", 51, 28, 59, 34);
+    room("office", 61, 28, 71, 34);
+    room("hall", 73, 28, 84, 39);
+    room("hall", 28, 36, 72, 39);
+    room("office", 28, 41, 36, 51);
+    room("office", 38, 41, 46, 51);
+    room("conference", 48, 41, 71, 51);
+    room("break", 73, 41, 84, 46);
+    room("lobby", 73, 1, 84, 21);
+    room("bullpen", 86, 28, 129, 51);
+    room("bullpen", 123, 19, 155, 33);
+    room("bullpen", 130, 34, 142, 42);
+    room("standup", 123, 8, 131, 17);
+    room("nook", 133, 8, 138, 18);
+    room("office", 140, 8, 147, 17);
+    room("office", 149, 8, 155, 17);
+
+    // Exterior glazing (south, west and east faces), with structural pillars at every corner.
+    const runs = [
+        [1, 7, 1, 34], [1, 34, 14, 34], [14, 34, 14, 43], [14, 43, 27, 43], [27, 43, 27, 52], [27, 52, 72, 52],
+        [72, 47, 72, 52], [72, 47, 85, 47], [85, 47, 85, 52], [85, 52, 130, 52], [130, 43, 130, 52], [130, 43, 143, 43],
+        [143, 34, 143, 43], [143, 34, 156, 34], [156, 7, 156, 34],
+    ];
+    for (const run of runs) glass(...run);
+    for (const [x0, y0, x1, y1] of runs) { wall(x0, y0, x0, y0); wall(x1, y1, x1, y1); }
+
+    // Northwest offices, west office, lounge and southwest office.
+    wall(1, 7, 35, 7);
+    for (const x of [10, 19, 27]) wall(x, 7, x, 16);
+    wall(1, 16, 35, 16);
+    wall(35, 7, 35, 35);
+    wall(1, 21, 14, 21);
+    wall(14, 21, 14, 34);
+    wall(14, 34, 18, 34);
+    wall(18, 32, 18, 34);
+    wall(18, 32, 27, 32);
+    wall(27, 27, 27, 43);
+    // Server room, corridor, wellness and middle offices.
+    wall(27, 27, 35, 27);
+    wall(27, 35, 35, 35);
+    wall(35, 21, 72, 21);
+    wall(85, 21, 122, 21);
+    wall(35, 27, 122, 27);
+    wall(122, 7, 122, 27);
+    wall(40, 27, 40, 35);
+    for (const x of [50, 60, 72]) wall(x, 27, x, 35);
+    wall(40, 35, 72, 35);
+    // South offices, conference and break room.
+    wall(27, 40, 85, 40);
+    wall(37, 40, 37, 52);
+    wall(47, 40, 47, 52);
+    wall(72, 40, 72, 47);
+    wall(85, 27, 85, 47);
+    // Elevator lobby.
+    wall(72, 0, 72, 21);
+    wall(85, 0, 85, 21);
+    wall(72, 0, 85, 0);
+    // Northeast standup room, couch nook and offices.
+    wall(122, 7, 156, 7);
+    wall(132, 7, 132, 18);
+    wall(122, 18, 132, 18);
+    wall(139, 7, 139, 18);
+    wall(148, 7, 148, 18);
+    wall(139, 18, 156, 18);
+
+    // Doorways (yellow on the plan).
+    door(2, 16, 4, 16); door(11, 16, 13, 16); door(20, 16, 22, 16); door(28, 16, 30, 16);
+    door(14, 23, 14, 25);
+    door(15, 34, 17, 34);
+    door(35, 23, 35, 25);
+    door(35, 32, 35, 33);
+    door(40, 32, 40, 33);
+    door(37, 27, 39, 27);
+    door(76, 27, 81, 27);
+    door(118, 27, 120, 27);
+    door(55, 35, 57, 35); door(61, 35, 63, 35);
+    door(32, 40, 34, 40); door(41, 40, 43, 40); door(67, 40, 70, 40);
+    door(85, 28, 85, 30);
+    door(85, 43, 85, 45);
+    door(128, 18, 130, 18);
+    door(145, 18, 147, 18); door(150, 18, 152, 18);
+
+    // Open outdoors beyond the glass.
+    box(0, 53, 157, 62, "o");
+    box(0, 35, 13, 52, "o");
+    box(14, 44, 26, 52, "o");
+    box(73, 48, 84, 52, "o");
+    box(131, 44, 143, 52, "o");
+    box(144, 35, 157, 52, "o");
+    box(0, 7, 0, 34, "o");
+    box(157, 7, 157, 34, "o");
+
+    // Northwest offices: desks against the east walls, chairs facing the windows like the plan.
+    desk(8, 8, 9, 12); desk(5, 11, 7, 12);
+    chair(6, 10, "s"); chair(6, 13, "n", "guest");
+    cabinet(7, 14, 9, 14, "bookshelf");
+    plant(2, 8, "snake");
+    desk(13, 11, 18, 12, "oak");
+    chair(16, 10, "s"); chair(15, 13, "n", "guest");
+    cabinet(16, 14, 18, 14, "credenza");
+    plant(11, 8);
+    desk(22, 11, 26, 12);
+    chair(24, 10, "s"); chair(24, 13, "n", "guest");
+    plant(26, 14, "snake");
+    cabinet(20, 8, 21, 8, "filing", "s");
+    desk(30, 11, 34, 12, "oak");
+    chair(32, 10, "s"); chair(32, 13, "n", "guest");
+    cabinet(32, 14, 34, 14, "bookshelf");
+    plant(28, 8);
+
+    // West corner office: meeting table, couch on the glass, L-desk in the corner.
+    roundTable(7, 24, 1.5);
+    chair(4.6, 24, "e", "guest"); chair(9.4, 24, "w", "guest"); chair(7, 26.4, "n", "guest");
+    couch(2, 27, 3, 32, "e", "red");
+    desk(8, 28, 13, 29); desk(12, 30, 13, 33);
+    chair(10, 30, "n");
+    plant(2, 22);
+    rug(5, 22, 9, 26, "blue");
+
+    // Lounge: couches around a coffee table on a rug.
+    rug(19, 23, 26, 30, "rust");
+    couch(20, 24, 24, 25, "s", "red");
+    item("coffeeTable", "T", 21, 27, 23, 28);
+    couch(17, 27, 18, 30, "e", "red");
+    plant(15, 17); plant(34, 17, "snake"); plant(26, 28, "palm");
+    decor("lamp", 19, 24, 19, 24);
+
+    // Southwest office.
+    desk(20, 35, 24, 36);
+    chair(22, 34, "s"); chair(22, 37, "n", "guest");
+    roundTable(16, 40, 1.2);
+    chair(16, 37.9, "s", "guest"); chair(18.1, 40, "w", "guest");
+    couch(19, 41, 23, 42, "n", "red");
+    cabinet(25, 37, 26, 42, "bookshelf", "w");
+    plant(26, 35, "palm");
+
+    // Server room: a rack row with its lit fronts toward the camera, plus cooling.
+    machine(29, 30, 33, 31, "rack", "n");
+    machine(28, 33, 29, 33, "crac", "n");
+    decor("cableTray", 29, 29, 33, 29);
+
+    // Wellness room.
+    counter(41, 28, 46, 29);
+    decor("sink", 43, 28, 43, 29);
+    machine(47, 28, 47, 28, "minifridge", "s");
+    couch(47, 31, 48, 32, "w", "sage");
+    item("sideTable", "T", 49, 33, 49, 33);
+    plant(49, 28, "palm");
+    rug(42, 31, 46, 33, "sage");
+
+    // Middle offices.
+    desk(51, 28, 52, 31); desk(53, 30, 55, 31);
+    chair(54, 29, "s"); chair(54, 32, "n", "guest");
+    cabinet(58, 33, 59, 33, "bookshelf");
+    plant(59, 28, "snake");
+    desk(65, 30, 71, 31, "oak");
+    chair(68, 29, "s"); chair(66.5, 32, "n", "guest"); chair(69.5, 32, "n", "guest");
+    cabinet(64, 33, 67, 33, "credenza");
+    plant(61, 28);
+
+    // Vestibule: the suite entrance off the elevator corridor.
+    rug(76, 28, 81, 29, "logo");
+    plant(75, 28, "palm"); plant(82, 28, "palm");
+    plant(73, 38, "snake");
+
+    // Corridor art and plants.
+    plant(121, 22, "fig");
+    for (const [x0, x1] of [[42, 45], [50, 53], [60, 63], [68, 71], [86, 89], [95, 98], [104, 107], [112, 115]]) decor("art", x0, 26, x1, 26);
+    for (const [x0, x1] of [[31, 34], [44, 47], [59, 62]]) decor("art", x0, 39, x1, 39);
+    decor("clock", 50, 39, 50, 39);
+
+    // South offices with a shared T-desk at the divider.
+    couch(28, 41, 31, 42, "s", "red");
+    desk(32, 45, 36, 46); desk(35, 47, 36, 51);
+    chair(34, 47, "n"); chair(33, 44, "s", "guest");
+    plant(28, 48, "fig");
+    desk(38, 45, 43, 46, "oak"); desk(38, 47, 39, 51, "oak");
+    chair(41, 47, "n"); chair(41, 44, "s", "guest");
+    plant(46, 41, "snake");
+
+    // Conference room.
+    desk(52, 44, 66, 47, "conference");
+    for (const x of [53, 56, 59, 62, 65]) { chair(x, 43, "s", "conference"); chair(x, 48, "n", "conference"); }
+    chair(51, 45.5, "e", "conference"); chair(67, 45.5, "w", "conference");
+    cabinet(48, 43, 48, 48, "media", "e");
+    plant(48, 41, "palm"); plant(71, 50, "fig"); plant(48, 50, "snake");
+
+    // Break room: counter with appliances, bistro tables along the window.
+    counter(73, 41, 83, 42);
+    machine(84, 41, 84, 42, "fridge", "w");
+    decor("sink", 77, 41, 77, 42);
+    decor("coffee", 74, 41, 74, 42);
+    decor("microwave", 81, 41, 81, 42);
+    decor("fruit", 79, 41, 79, 42);
+    for (const x of [74.5, 78.5, 82.5]) { roundTable(x, 44.5, 0.8, "bistro"); chair(x - 1.4, 44.5, "e", "stool"); chair(x + 1.4, 44.5, "w", "stool"); }
+
+    // Elevator lobby.
+    for (const y of [3, 8, 13]) { decor("elevator", 72, y, 72, y + 2, { side: "w" }); decor("elevator", 85, y, 85, y + 2, { side: "e" }); }
+    item("bench", "K", 77, 9, 80, 9);
+    plant(73, 1, "palm"); plant(84, 1, "palm");
+    rug(75, 17, 82, 20, "lobby");
+
+    // Bullpen: fishbone desk clusters with a planted storage spine; everyone faces the windows.
+    const cluster = (cx, top, arms) => {
+        item("spine", "K", cx - 1, top, cx + 1, arms.at(-1) + 1);
+        for (const ay of arms) {
+            desk(cx - 4, ay, cx + 4, ay + 1, "white");
+            chair(cx - 3, ay - 1, "s"); chair(cx + 3, ay - 1, "s");
+        }
+    };
+    cluster(93, 33, [35, 40, 45, 50]);
+    cluster(106, 33, [35, 40, 45, 50]);
+    cluster(119, 33, [35, 40, 45, 50]);
+    cluster(136, 22, [24, 29, 34, 39]);
+    cluster(149, 22, [24, 29]);
+    desk(123, 21, 124, 26, "oak");
+    machine(123, 23, 124, 24, "printer", "e");
+    plant(86, 33, "fig"); plant(129, 28, "palm"); plant(155, 19, "fig"); plant(142, 41, "snake"); plant(86, 50, "palm");
+    machine(123, 19, 123, 19, "waterCooler", "e");
+
+    // Standup room, couch nook and northeast offices.
+    roundTable(127, 12, 1.9);
+    for (const [dx, dy] of [[-2.4, -2.2], [2.4, -2.2], [-2.4, 2.2], [2.4, 2.2]]) chair(127 + dx, 12 + dy, dx < 0 ? "e" : "w", "conference");
+    decor("whiteboard", 123, 17, 126, 17);
+    decor("tv", 123, 8, 123, 10, { side: "w" });
+    couch(137, 9, 138, 14, "w", "red");
+    item("coffeeTable", "T", 135, 11, 135, 12);
+    plant(133, 8, "palm"); plant(137, 16, "snake");
+    rug(134, 9, 136, 14, "rust");
+    desk(140, 11, 145, 12);
+    chair(142, 10, "s"); chair(142, 13, "n", "guest");
+    cabinet(140, 16, 142, 16, "bookshelf");
+    plant(147, 8);
+    desk(149, 11, 153, 12, "oak");
+    chair(151, 10, "s"); chair(151, 13, "n", "guest");
+    plant(155, 16, "snake");
+    cabinet(153, 8, 155, 8, "filing", "s");
+
+    return { cells, zones, props };
+}
+
+const PLAN = buildPlan();
+const WALLISH = new Set(["#", "B"]);
+
+function rotateRows(source, blank) {
+    const rows = [];
+    for (let r = 0; r < ROWS; r++) {
+        const y = PLAN_ROWS - 1 - r;
+        rows.push(Array.from({ length: COLS }, (_, c) => (y >= 0 ? source[y][COLS - 1 - c] : blank)));
+    }
+    return rows;
+}
+
+/** World grid (camera looking south). Floor tiles directly below a wall or window become solid faces. */
+export const GRID = (() => {
+    const rows = rotateRows(PLAN.cells, "x");
+    for (let r = ROWS - 1; r > 0; r--) for (let c = 0; c < COLS; c++) {
+        if (WALLISH.has(rows[r - 1][c]) && (rows[r][c] === "." || rows[r][c] === "c")) rows[r][c] = "F";
+    }
+    return rows.map((row) => row.join(""));
+})();
+
+/** Floor material per world tile; doorways borrow a neighbouring room's floor. */
+export const ZONES = (() => {
+    const rows = rotateRows(PLAN.zones, "");
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        if (rows[r][c] || GRID[r][c] !== "D") continue;
+        for (const [dc, dr] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { const z = rows[r + dr]?.[c + dc]; if (z) { rows[r][c] = z; break; } }
+    }
+    return rows;
+})();
+
+/** Furniture and decor in world tile units: rect props get {x, y, w, h}; point props get {x, y} centers. Facings are world directions. */
+export const PROPS = PLAN.props.map((prop) => {
+    const { x0, y0, x1, y1, cx, cy, facing, ...rest } = prop;
+    const out = { ...rest };
+    if (cx !== undefined) Object.assign(out, { x: PLAN_COLS - 0.5 - cx, y: PLAN_ROWS - 0.5 - cy });
+    else Object.assign(out, { x: PLAN_COLS - 1 - x1, y: PLAN_ROWS - 1 - y1, w: x1 - x0 + 1, h: y1 - y0 + 1 });
+    if (facing) out.facing = FLIP[facing];
+    if (prop.side) out.side = prop.side === "w" ? "e" : "w";
+    return out;
+});
+
+const label = (text, x, y) => ({ text, x: (PLAN_COLS - 1 - x) * TILE + TILE / 2, y: (PLAN_ROWS - 1 - y) * TILE + TILE / 2 });
 export const LABELS = [
-    { text: "Bullpen", x: 950, y: 375 },
-    { text: "Bullpen", x: 350, y: 635 },
-    { text: "Offices", x: 310, y: 975 },
-    { text: "Offices", x: 2730, y: 995 },
-    { text: "Conference", x: 1970, y: 295 },
-    { text: "Server Room", x: 1570, y: 395 },
-    { text: "Standup", x: 2470, y: 395 },
-    { text: "Break Room", x: 2090, y: 615 },
-    { text: "Wellness", x: 2830, y: 655 },
-    { text: "Elevators", x: 1590, y: 1035 },
+    label("Bullpen", 107, 30),
+    label("Offices", 23, 14),
+    label("Offices", 144, 14),
+    label("Offices", 42, 49),
+    label("Office", 6, 30),
+    label("Office", 18, 38),
+    label("Lounge", 28, 20),
+    label("Server Room", 31, 28),
+    label("Wellness", 44, 30),
+    label("Conference", 59, 50),
+    label("Break Room", 78, 43),
+    label("Standup", 127, 16),
+    label("Elevators", 78, 5),
 ];
 
-const SOLID = new Set(["#", "B", "R", "N", "S", "x", "o"]);
+const SOLID = new Set(["#", "B", "F", "R", "N", "S", "K", "T", "P", "M", "x", "o"]);
 const FOOT = { x: 8, y: 4 };
 const MAX_STEP = 14;
 const SLIDE = 6;
@@ -193,165 +473,22 @@ export function smoothCamera(cam, goal, dt, rate = 10) {
     return { x: ease(cam.x, goal.x), y: ease(cam.y, goal.y) };
 }
 
-/** Translation for a scenery layer; factor 0 stays fixed on screen (infinitely far), 1 moves with the world. */
+/**
+ * Scenery layers behind the window glass. x is how fast a layer pans with the world (0 = pinned to the screen like the sky,
+ * 1 = moves with the floor). y stays small for every layer so the horizon holds near eye level as you walk deeper inside.
+ */
+export const PARALLAX = [
+    { id: "loungeSceneryFar", x: 0.15, y: 0.06 },
+    { id: "loungeSceneryMid", x: 0.4, y: 0.1 },
+    { id: "loungeSceneryNear", x: 0.7, y: 0.16 },
+];
+
+/** Translation for a scenery layer. factor is a number for both axes or {x, y}. */
 export function parallaxOffset(cam, factor) {
-    return { x: cam.x * (1 - factor), y: cam.y * (1 - factor) };
-}
-
-function runs(test) {
-    const rects = [];
-    const open = new Map();
-    for (let row = 0; row < ROWS; row++) {
-        const seen = new Set();
-        for (let col = 0; col < COLS;) {
-            if (!test(GRID[row][col], col, row)) { col++; continue; }
-            const start = col;
-            while (col < COLS && test(GRID[row][col], col, row)) col++;
-            const key = `${start}:${col}`;
-            const rect = open.get(key);
-            if (rect && rect.r1 === row) rect.r1 = row + 1;
-            else { const fresh = { c0: start, c1: col, r0: row, r1: row + 1 }; rects.push(fresh); open.set(key, fresh); }
-            seen.add(key);
-        }
-        for (const key of [...open.keys()]) if (!seen.has(key)) open.delete(key);
-    }
-    return rects.map(({ c0, c1, r0, r1 }) => ({ x: c0 * TILE, y: r0 * TILE, w: (c1 - c0) * TILE, h: (r1 - r0) * TILE }));
-}
-
-const rect = ({ x, y, w, h }, attrs) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" ${attrs}/>`;
-
-function furniture(code, base, top, extra = () => "") {
-    return runs((cell) => cell === code).map((r) => rect(r, `fill="${base}"`) + rect({ ...r, h: Math.min(5, r.h) }, `fill="${top}"`) + extra(r)).join("");
-}
-
-function monitors(r) {
-    let out = "";
-    const horizontal = r.w >= r.h;
-    const length = horizontal ? r.w : r.h;
-    for (let at = TILE; at < length; at += TILE * 3) {
-        const x = horizontal ? r.x + at - 5 : r.x + r.w / 2 - 5;
-        const y = horizontal ? r.y + r.h / 2 - 4 : r.y + at - 4;
-        out += `<rect x="${x}" y="${y}" width="10" height="6" fill="#262c38"/><rect x="${x + 1}" y="${y + 1}" width="8" height="3" fill="#5fa8d3"/>`;
-    }
-    return out;
-}
-
-function windows() {
-    return runs((cell) => cell === "B").map((r) => {
-        let mullions = "";
-        if (r.w >= r.h) for (let x = r.x + TILE * 3; x < r.x + r.w; x += TILE * 3) mullions += `<rect x="${x - 1}" y="${r.y}" width="2" height="${r.h}" fill="#8da2b8"/>`;
-        else for (let y = r.y + TILE * 3; y < r.y + r.h; y += TILE * 3) mullions += `<rect x="${r.x}" y="${y - 1}" width="${r.w}" height="2" fill="#8da2b8"/>`;
-        return rect(r, 'fill="rgba(170,210,255,.22)" stroke="#8da2b8" stroke-width="2"') + mullions;
-    }).join("");
-}
-
-function elevatorDoors() {
-    let out = "";
-    for (const row of [44, 48, 52, 56]) {
-        for (const [x, face] of [[73 * TILE - 6, 0], [86 * TILE, 1]]) {
-            out += `<rect x="${x}" y="${row * TILE}" width="6" height="${TILE * 2}" fill="#aab3bd"/>`;
-            out += `<rect x="${x + (face ? 0 : 4)}" y="${row * TILE + TILE - 0.5}" width="2" height="1" fill="#5b636d"/>`;
-            out += `<rect x="${face ? x + 7 : x - 4}" y="${row * TILE + TILE - 3}" width="3" height="6" fill="#ffd84a" opacity=".7"/>`;
-        }
-    }
-    return out;
-}
-
-/** Static office artwork in world coordinates. Opaque everywhere except open outdoors and window glass. */
-export function mapMarkup() {
-    const floor = runs((cell) => !"oxB#".includes(cell));
-    const walls = runs((cell) => cell === "#");
-    const faces = runs((cell, col, row) => cell === "#" && !"#xo".includes(tileAt(col, row + 1)));
-    const chairs = [];
-    for (let row = 0; row < ROWS; row++) for (let col = 0; col < COLS; col++) {
-        if (GRID[row][col] === "c") chairs.push(`<rect x="${col * TILE + 4}" y="${row * TILE + 4}" width="12" height="12" rx="3" fill="#3f8f4f"/><rect x="${col * TILE + 6}" y="${row * TILE + 5}" width="8" height="3" rx="1" fill="#5fb06f"/>`);
-    }
-    return [
-        '<defs><pattern id="loungeFloor" width="40" height="40" patternUnits="userSpaceOnUse"><rect width="40" height="40" fill="#cfc4ae"/><path d="M0 0H40M0 20H40M0 0V20M20 20V40" stroke="#bfb39b" stroke-width="1" fill="none"/></pattern></defs>',
-        runs((cell) => cell === "x").map((r) => rect(r, 'fill="#20242c"')).join(""),
-        floor.map((r) => rect(r, 'fill="url(#loungeFloor)"')).join(""),
-        runs((cell) => cell === "D").map((r) => rect(r, 'fill="#ffd84a" opacity=".18"')).join(""),
-        furniture("S", "#9aa0a8", "#c3c8ce"),
-        furniture("N", "#8a5a36", "#a8744a", monitors),
-        runs((cell) => cell === "R").map((r) => rect(r, 'rx="4" fill="#b0413e"') + rect({ x: r.x + 2, y: r.y + 2, w: r.w - 4, h: Math.min(6, r.h - 4) }, 'rx="2" fill="#c95a55"')).join(""),
-        chairs.join(""),
-        walls.map((r) => rect(r, 'fill="#3a3f4b"')).join(""),
-        faces.map((r) => rect({ ...r, y: r.y + r.h - 6, h: 6 }, 'fill="#2a2e37"')).join(""),
-        windows(),
-        elevatorDoors(),
-    ].join("");
+    const fx = typeof factor === "number" ? factor : factor.x, fy = typeof factor === "number" ? factor : factor.y;
+    return { x: cam.x * (1 - fx), y: cam.y * (1 - fy) };
 }
 
 export function labelsMarkup() {
-    return LABELS.map((label) => `<text class="lounge-room-label" x="${label.x}" y="${label.y}" text-anchor="middle">${label.text}</text>`).join("");
-}
-
-function seeded(seed) {
-    return () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-}
-
-function litWindows(x, y, w, h, random, color = "#ffe9a8") {
-    let out = "";
-    for (let wy = y + 6; wy < y + h - 4; wy += 8) for (let wx = x + 4; wx < x + w - 4; wx += 7) if (random() < 0.28) out += `<rect x="${wx}" y="${wy}" width="3" height="4" fill="${color}" opacity=".8"/>`;
-    return out;
-}
-
-const HORIZON = 200;
-
-/** Downtown Indianapolis in three parallax layers (layer coordinates; the view applies parallaxOffset). */
-export function sceneryMarkup() {
-    const random = seeded(317);
-    let far = `<defs><linearGradient id="loungeSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5d9ed8"/><stop offset=".55" stop-color="#a9d2ef"/><stop offset="1" stop-color="#f2dcb5"/></linearGradient></defs>`;
-    far += `<rect x="-400" y="-400" width="2400" height="${HORIZON + 400}" fill="url(#loungeSky)"/><rect x="-400" y="${HORIZON - 15}" width="2400" height="900" fill="#b9c6cf"/>`;
-    far += `<circle cx="980" cy="70" r="22" fill="#fff4c4" opacity=".9"/>`;
-    for (const [cx, cy, s] of [[120, 50, 1], [420, 90, 0.8], [700, 40, 1.2], [1250, 80, 0.9], [1550, 55, 1.1]]) {
-        far += `<g fill="#fff" opacity=".75"><rect x="${cx}" y="${cy}" width="${60 * s}" height="${10 * s}" rx="5"/><rect x="${cx + 12 * s}" y="${cy - 7 * s}" width="${30 * s}" height="${10 * s}" rx="5"/></g>`;
-    }
-    for (let x = -300; x < 1900; x += 18 + random() * 24) {
-        const h = 12 + random() * 34, w = 14 + random() * 22;
-        far += `<rect x="${Math.round(x)}" y="${Math.round(HORIZON - 15 - h)}" width="${Math.round(w)}" height="${Math.round(h)}" fill="#9fb1bf"/>`;
-    }
-
-    let mid = "";
-    const landmarks = [
-        { x: 250, w: 90, h: 105, fill: "#3d6f9e", glass: true },
-        { x: 420, w: 40, h: 120, fill: "#d9d3c7" },
-        { x: 620, w: 46, h: 165, fill: "#6f8fa8", glass: true },
-        { x: 760, w: 44, h: 140, fill: "#8996a3", spires: true },
-        { x: 960, w: 70, h: 90, fill: "#7d8a96" },
-        { x: 1110, w: 54, h: 112, fill: "#a7a093" },
-    ];
-    const occupied = (x, w) => landmarks.some((l) => x < l.x + l.w + 6 && x + w > l.x - 6) || (x < 1560 && x + w > 1290) || (x < 580 && x + w > 552);
-    for (let x = -200; x < 2100; x += 26 + random() * 30) {
-        const w = 24 + random() * 34, h = 30 + random() * 70;
-        if (occupied(x, w)) continue;
-        const shade = ["#7c8794", "#8a8f99", "#6f7a86", "#958e84"][Math.floor(random() * 4)];
-        mid += `<rect x="${Math.round(x)}" y="${Math.round(HORIZON - h)}" width="${Math.round(w)}" height="${Math.round(h)}" fill="${shade}"/>${litWindows(Math.round(x), Math.round(HORIZON - h), Math.round(w), Math.round(h), random)}`;
-    }
-    for (const l of landmarks) {
-        const top = HORIZON - l.h;
-        mid += `<rect x="${l.x}" y="${top}" width="${l.w}" height="${l.h}" fill="${l.fill}"/>`;
-        if (l.glass) for (let y = top + 6; y < HORIZON; y += 9) mid += `<rect x="${l.x + 3}" y="${y}" width="${l.w - 6}" height="2" fill="#a9d2ef" opacity=".45"/>`;
-        else mid += litWindows(l.x, top, l.w, l.h, random);
-        if (l.spires) mid += `<rect x="${l.x + 6}" y="${top - 30}" width="4" height="30" fill="${l.fill}"/><rect x="${l.x + l.w - 10}" y="${top - 30}" width="4" height="30" fill="${l.fill}"/><rect x="${l.x + 4}" y="${top - 4}" width="${l.w - 8}" height="4" fill="#6c7883"/>`;
-    }
-    // Salesforce Tower crown and the Soldiers' and Sailors' Monument on the Circle.
-    mid += `<rect x="626" y="${HORIZON - 175}" width="34" height="10" fill="#52728c"/><rect x="641" y="${HORIZON - 190}" width="4" height="15" fill="#52728c"/>`;
-    mid += `<rect x="552" y="${HORIZON - 12}" width="28" height="12" fill="#c8bfae"/><polygon points="559,${HORIZON - 12} 573,${HORIZON - 12} 568,${HORIZON - 90} 564,${HORIZON - 90}" fill="#d8cfbd"/><rect x="563" y="${HORIZON - 100}" width="6" height="10" fill="#c9a94a"/>`;
-    // Lucas Oil Stadium with its retractable roof.
-    mid += `<rect x="1300" y="${HORIZON - 34}" width="250" height="34" fill="#a2634a"/><path d="M1296 ${HORIZON - 34} Q1425 ${HORIZON - 64} 1554 ${HORIZON - 34} Z" fill="#c7ccd1"/><rect x="1418" y="${HORIZON - 58}" width="14" height="24" fill="#8d959c"/>`;
-
-    let near = `<rect x="-400" y="${HORIZON + 5}" width="3600" height="1400" fill="#4a4f57"/>`;
-    for (let y = HORIZON + 30; y < 1500; y += 90) {
-        for (let x = -360; x < 3100; x += 110) {
-            const roof = ["#6b7280", "#7a6f64", "#5f6b73", "#857a6a"][Math.floor(random() * 4)];
-            near += `<rect x="${x}" y="${y}" width="86" height="66" fill="${roof}"/><rect x="${x + 4}" y="${y + 4}" width="${20 + Math.floor(random() * 40)}" height="${12 + Math.floor(random() * 20)}" fill="#9aa1a9" opacity=".5"/>`;
-            if (random() < 0.25) near += `<rect x="${x + 10}" y="${y + 40}" width="16" height="16" rx="8" fill="#4f7a43"/>`;
-        }
-    }
-    for (let x = -400; x < 3200; x += 34 + random() * 40) {
-        const w = 30 + random() * 40, h = 14 + random() * 22;
-        near += `<rect x="${Math.round(x)}" y="${Math.round(HORIZON + 5 - h)}" width="${Math.round(w)}" height="${Math.round(h)}" fill="#5a616b"/><rect x="${Math.round(x)}" y="${Math.round(HORIZON + 5 - h)}" width="${Math.round(w)}" height="3" fill="#737b86"/>`;
-    }
-    return { far, mid, near };
+    return LABELS.map((item) => `<text class="lounge-room-label" x="${item.x}" y="${item.y}" text-anchor="middle">${item.text}</text>`).join("");
 }
