@@ -376,6 +376,11 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
 .lounge-label { fill: #9edcff; }
 .lounge-self .lounge-label { fill: #ffd84a; }
 .lounge-username { fill: #d2d9e3; }
+.lounge-chat label { display: grid; gap: 4px; min-width: 0; }
+.lounge-chat input { min-width: 0; }
+.lounge-chat-bubble { pointer-events: none; }
+.lounge-chat-bubble rect, .lounge-chat-bubble path { fill: var(--db-surface); stroke: var(--db-border); stroke-width: 1.5; }
+.lounge-chat-bubble text { fill: var(--db-fg); font: 12px ui-monospace, Consolas, monospace; }
 .lounge-members { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .lounge-voice select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 8px; border: 1px solid var(--db-border); border-radius: 6px; background: var(--db-bg); color: var(--db-fg); font: inherit; }
 .lounge-voice .section-title { margin: 0; }

@@ -9,6 +9,8 @@ const ORG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
 const SLUG_PATTERN = /^[a-z0-9-]{1,40}$/;
 const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const MOVES_PER_SEC = 15;
+const CHAT_MAX_LENGTH = 160;
+const CHAT_INTERVAL_MS = 1000;
 
 class LoungeError extends Error {
     constructor(status, code, message) {
@@ -162,7 +164,7 @@ export function createLoungeServer(options = {}) {
         const member = {
             id: session.userId, login: session.login, buddy: session.buddy,
             x: keep ? keep.x : randomIn(760, 2420), y: keep ? keep.y : randomIn(750, 810),
-            lastSeen: now, sessionId: session.sessionId, res, moves: [],
+            lastSeen: now, sessionId: session.sessionId, res, moves: [], lastChatAt: previous?.lastChatAt ?? -Infinity,
         };
         lastPositions.delete(session.userId);
         room.set(member.id, member);
@@ -206,6 +208,18 @@ export function createLoungeServer(options = {}) {
         broadcast(session.org, "move", { id: member.id, x, y });
         await cleanup;
         return { x, y };
+    }
+
+    function chat(session, body) {
+        const member = rooms.get(session.org)?.get(session.userId);
+        if (!member || member.sessionId !== session.sessionId) throw new LoungeError(409, "not_in_room", "Open this session's stream before chatting.");
+        const text = typeof body.text === "string" ? body.text.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim() : "";
+        if (!text || text.length > CHAT_MAX_LENGTH) throw new LoungeError(400, "bad_message", `Messages must contain 1-${CHAT_MAX_LENGTH} characters.`);
+        const now = Date.now();
+        if (now - member.lastChatAt < CHAT_INTERVAL_MS) throw new LoungeError(429, "rate_limited", "Wait a second before sending another message.");
+        member.lastChatAt = member.lastSeen = now;
+        broadcast(session.org, "chat", { id: member.id, text });
+        return { ok: true };
     }
 
     function readBody(req, maxBody = MAX_BODY) {
@@ -263,6 +277,8 @@ export function createLoungeServer(options = {}) {
         switch (url.pathname) {
             case "/v1/move":
                 return send(res, 200, { ok: true, ...(await move(session, body)) });
+            case "/v1/chat":
+                return send(res, 200, chat(session, body));
             case "/v1/heartbeat": {
                 const member = rooms.get(session.org)?.get(session.userId);
                 if (member?.sessionId === session.sessionId) member.lastSeen = Date.now();

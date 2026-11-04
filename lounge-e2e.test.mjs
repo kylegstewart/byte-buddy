@@ -140,6 +140,13 @@ test('two independent extension processes share an org lounge; other orgs are is
     assert.equal(logins(alice.latest), 'alice,bob');
     assert.equal(logins(bob.latest), 'alice,bob');
 
+    await alice.post('chat', { text: 'Hello from Alice!' });
+    await bob.until((state) => state.members.some((member) => member.login === 'alice' && member.chat?.text === 'Hello from Alice!'), 'bob sees alice chat');
+    await alice.until((state) => state.members.some((member) => member.login === 'alice' && member.chat?.text === 'Hello from Alice!'), 'alice sees her own chat');
+    assert.ok(carol.latest.members.every((member) => !member.chat), 'other organizations do not receive chat');
+    await bob.post('chat', { text: 'Hi Alice!' });
+    await alice.until((state) => state.members.some((member) => member.login === 'bob' && member.chat?.text === 'Hi Alice!'), 'alice sees bob reply');
+
     // 3. Movement is visible to the other user (clamped to the room).
     await alice.post('move', { x: 42, y: 99 });
     await bob.until((s) => { const a = s.members.find((m) => m.login === 'alice'); return a && a.x === 42 && a.y === 99; }, 'bob sees alice move');

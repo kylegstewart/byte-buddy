@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { SPEED, approach, clampPoint, createLoungeView, diffMembers, directionForKey, heldVelocity, loadSceneArt, memberTransform, statusText } from "./public/lounge.js";
+import { SPEED, approach, chatLines, clampPoint, createLoungeView, diffMembers, directionForKey, heldVelocity, loadSceneArt, memberTransform, statusText } from "./public/lounge.js";
 
 const html = readFileSync(new URL("./public/index.html", import.meta.url), "utf8");
 const app = readFileSync(new URL("./public/app.js", import.meta.url), "utf8");
@@ -75,22 +75,25 @@ class FakeNode {
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
     dispatch(type, event = {}) { for (const fn of this.listeners[type] || []) fn({ preventDefault() {}, ...event }); }
     getBoundingClientRect() { return { left: 0, top: 0, width: 160, height: 120 }; }
+    focus() { this.focused = true; }
 }
 
-function harness(docExtras = {}) {
+function harness({ api: request, ...docExtras } = {}) {
     const ids = ["loungeUrlForm", "loungeUrl", "loungeUrlSave", "loungeUrlNote", "loungeOrg", "loungeOrgHint", "loungeJoin", "loungeLeave",
-        "loungeStatus", "loungeRoom", "loungeMembersLayer", "loungeMemberList", "loungeSceneryFar", "loungeSceneryMid", "loungeSceneryNear", "loungeMap", "loungeLabels"];
+        "loungeStatus", "loungeRoom", "loungeMembersLayer", "loungeMemberList", "loungeSceneryFar", "loungeSceneryMid", "loungeSceneryNear", "loungeMap", "loungeLabels",
+        "loungeChatLayer", "loungeChatForm", "loungeChatInput", "loungeChatSend"];
     const elements = Object.fromEntries(ids.map((id) => [id, new FakeNode(id)]));
     const doc = { getElementById: (id) => elements[id] || null, createElementNS: (_ns, tag) => new FakeNode(tag), ...docExtras };
     const calls = [];
+    const toasts = [];
     const frames = [];
     const clock = { t: 1000 };
     const view = createLoungeView({
-        doc, esc: (s) => String(s).replace(/</g, "&lt;"), toast: () => {},
-        api: async (path, body) => { calls.push([path, body]); return { status: "connecting", serverUrl: "https://l", org: body?.org, members: [] }; },
+        doc, esc: (s) => String(s).replace(/</g, "&lt;"), toast: (...args) => toasts.push(args),
+        api: async (path, body) => { calls.push([path, body]); return request ? request(path, body) : { status: "connecting", serverUrl: "https://l", org: body?.org, members: [] }; },
         renderBuddy: (opts) => `<g data-stage="${opts.stage}" data-pose="${opts.pose}" data-frame="${opts.frame}" data-look="${opts.look}"></g>`, buddyViewBox: () => "-44 -40 88 46",
         getOrgs: () => ["meyer", "other"], getBuddy: () => ({ stage: 2, name: "Bolt" }),
-        raf: (fn) => frames.push(fn), now: () => clock.t,
+        raf: (fn) => frames.push(fn), now: () => clock.t, wallNow: () => clock.t,
     });
     // Advances the fake clock frame by frame, running the animation loop like requestAnimationFrame would.
     const run = (ms, step = 16) => {
@@ -99,7 +102,7 @@ function harness(docExtras = {}) {
             frames.splice(0).forEach((fn) => fn());
         }
     };
-    return { view, elements, calls, frames, run, clock, layer: elements.loungeMembersLayer };
+    return { view, elements, calls, toasts, frames, run, clock, layer: elements.loungeMembersLayer };
 }
 
 const xOf = (node) => Number(/translate\(([\d.]+)px/.exec(node.style.transform)[1]);
@@ -147,7 +150,7 @@ test("buddies are larger with names above smaller usernames and no self bar", ()
     const self = layer.children.find((node) => node.attrs["data-id"] === "1");
     const other = layer.children.find((node) => node.attrs["data-id"] === "2");
     for (const node of [self, other]) {
-        assert.match(node.children[0].innerHTML, /<svg[^>]*width="64"/);
+        assert.match(node.children[0].innerHTML, /<svg[^>]*width="80"/);
         assert.doesNotMatch(node.children[1].innerHTML, /<rect|lounge-self-marker/);
     }
     assert.match(self.children[1].innerHTML, /class="lounge-label"[^>]*y="18"[^>]*font-size="12"[^>]*>Bolt<\/text><text class="lounge-username"[^>]*y="30"[^>]*font-size="8"[^>]*>me<\/text>/);
@@ -158,6 +161,119 @@ test("buddies are larger with names above smaller usernames and no self bar", ()
     assert.match(self.children[1].innerHTML, />Nova<\/text>/, "renaming updates the existing label");
     view.update(connected([{ ...members[0], buddy: {} }]));
     assert.match(self.children[1].innerHTML, />Byte Buddy<\/text>/, "unnamed buddies have a fallback name");
+});
+
+test("chat wraps words and long messages without splitting emoji", () => {
+    assert.deepEqual(chatLines("  Hello   room!  "), ["Hello room!"]);
+    assert.deepEqual(chatLines("one two three", 7), ["one two", "three"]);
+    assert.deepEqual(chatLines("x".repeat(60)), ["x".repeat(28), "x".repeat(28), "xxxx"]);
+    assert.deepEqual(chatLines("\u{1f44b}".repeat(30)), ["\u{1f44b}".repeat(28), "\u{1f44b}".repeat(2)]);
+    assert.deepEqual(chatLines(""), []);
+    assert.match(html, /id="loungeChatInput"[^>]*maxlength="160"[^>]*aria-describedby="loungeChatHint"/);
+});
+
+test("chat sends trimmed messages only when connected and ignores duplicate submissions", async () => {
+    const { view, elements, calls } = harness();
+    const input = elements.loungeChatInput;
+    assert.equal(input.disabled, true);
+    input.value = "hello";
+    elements.loungeChatForm.dispatch("submit");
+    await flush();
+    assert.deepEqual(calls, []);
+    view.update(connected([{ id: "1", login: "me", buddy: {}, x: 1600, y: 780 }]));
+    assert.equal(input.disabled, false);
+    input.value = "   ";
+    input.dispatch("input");
+    assert.equal(elements.loungeChatSend.disabled, true);
+    elements.loungeChatForm.dispatch("submit");
+    input.value = "  Hello room!  ";
+    input.dispatch("input");
+    assert.equal(elements.loungeChatSend.disabled, false);
+    elements.loungeChatForm.dispatch("submit");
+    elements.loungeChatForm.dispatch("submit");
+    assert.equal(elements.loungeChatSend.disabled, true);
+    await flush();
+    assert.deepEqual(calls, [["/api/lounge/chat", { text: "Hello room!" }]]);
+    assert.equal(input.value, "");
+    assert.equal(elements.loungeChatSend.disabled, true);
+    assert.equal(view.state.status, "connected", "sending does not replace live state with an API response");
+    view.update({ status: "reconnecting", members: [] });
+    assert.equal(input.disabled, true);
+});
+
+test("failed chat sends preserve the draft and show the server error", async () => {
+    const { view, elements, toasts } = harness({ api: async () => { throw new Error("Wait a second."); } });
+    view.update(connected([]));
+    elements.loungeChatInput.value = "Try again";
+    elements.loungeChatForm.dispatch("submit");
+    await flush();
+    assert.equal(elements.loungeChatInput.value, "Try again");
+    assert.equal(elements.loungeChatSend.disabled, false);
+    assert.deepEqual(toasts, [["Lounge: Wait a second.", "err"]]);
+});
+
+test("chat keeps edits typed during an in-flight send", async () => {
+    let finish;
+    const { view, elements } = harness({ api: () => new Promise((resolve) => { finish = resolve; }) });
+    view.update(connected([]));
+    elements.loungeChatInput.value = "First message";
+    elements.loungeChatForm.dispatch("submit");
+    elements.loungeChatInput.value = "Next message";
+    finish({});
+    await flush();
+    assert.equal(elements.loungeChatInput.value, "Next message");
+});
+
+test("Enter starts chat and stops movement; Escape returns focus to the room", () => {
+    const { view, elements, run } = harness();
+    view.update(connected([{ id: "1", login: "me", buddy: {}, x: 1600, y: 780 }]));
+    elements.loungeRoom.dispatch("keydown", { key: "ArrowRight" });
+    run(100);
+    elements.loungeRoom.dispatch("keydown", { key: "Enter" });
+    assert.equal(elements.loungeChatInput.focused, true);
+    const position = { ...view.position };
+    run(100);
+    assert.deepEqual(view.position, position);
+    elements.loungeChatInput.dispatch("keydown", { key: "Escape" });
+    assert.equal(elements.loungeRoom.focused, true);
+});
+
+test("chat bubbles escape markup, follow the buddy, replace old messages and expire", () => {
+    const { view, elements, run, clock, layer } = harness();
+    const member = { id: "2", login: "pal", buddy: {}, x: 1640, y: 770, chat: { text: "<script>Hello</script>", expiresAt: clock.t + 6000 } };
+    view.update(connected([member]));
+    const bubble = elements.loungeChatLayer.children[0];
+    assert.equal(bubble.style.display, "");
+    assert.match(bubble.innerHTML, /&lt;script>Hello&lt;\/script>/);
+    assert.doesNotMatch(bubble.innerHTML, /<script>/);
+    assert.equal(bubble.attrs["aria-label"], "pal: <script>Hello</script>");
+    assert.ok(Number(/<rect[^>]*y="([\d.-]+)"/.exec(bubble.innerHTML)[1]) < -40, "bubble sits above the enlarged sprite");
+    view.update(connected([{ ...member, x: 1660 }]));
+    run(400);
+    assert.equal(bubble.style.transform, layer.children[0].style.transform);
+    assert.equal(bubble.style.transform, "translate(1660px, 770px)");
+    run(3000);
+    view.update(connected([{ ...member, chat: { text: "New message", expiresAt: clock.t + 6000 } }]));
+    run(3000);
+    assert.match(bubble.innerHTML, /New message/);
+    run(3100);
+    assert.equal(bubble.style.display, "none");
+    assert.equal(bubble.innerHTML, "");
+    view.update(connected([]));
+    assert.equal(elements.loungeChatLayer.children.length, 0);
+});
+
+test("disconnecting or losing Lounge availability clears visible chat", () => {
+    const { view, elements, clock } = harness();
+    const member = { id: "1", login: "me", buddy: {}, x: 1600, y: 780, chat: { text: "hello", expiresAt: clock.t + 6000 } };
+    view.update(connected([member]));
+    view.unavailable();
+    assert.equal(elements.loungeChatLayer.children[0].style.display, "none");
+    assert.equal(elements.loungeChatInput.disabled, true);
+    view.update(connected([member]));
+    assert.equal(elements.loungeChatLayer.children[0].style.display, "");
+    view.update({ ...connected([member]), status: "reconnecting" });
+    assert.equal(elements.loungeChatLayer.children[0].style.display, "none");
 });
 
 test("walking switches the sprite to animated walk frames and back to standing", () => {

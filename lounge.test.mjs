@@ -17,7 +17,7 @@ async function fakeLounge(t) {
     const sessions = new Map();
     const room = new Map();
     const streams = new Map();
-    const log = { session: [], stream: 0, move: [], heartbeat: 0, leave: 0 };
+    const log = { session: [], stream: 0, move: [], chat: [], heartbeat: 0, leave: 0 };
     const write = (res, event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     const broadcast = (event, data, except) => { for (const [id, res] of streams) if (id !== except) write(res, event, data); };
     const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -65,6 +65,11 @@ async function fakeLounge(t) {
             broadcast('move', { id: member.id, x: body.x, y: body.y });
             return json(res, 200, { ok: true });
         }
+        if (req.method === 'POST' && path === '/v1/chat') {
+            log.chat.push(body);
+            broadcast('chat', { id: session.id, text: body.text });
+            return json(res, 200, { ok: true });
+        }
         if (req.method === 'POST' && path === '/v1/heartbeat') { log.heartbeat++; return json(res, 200, { ok: true }); }
         if (req.method === 'POST' && path === '/v1/leave') {
             log.leave++;
@@ -84,6 +89,7 @@ async function fakeLounge(t) {
         url: `http://127.0.0.1:${server.address().port}`, log, room, streams, sessions,
         addMember(member) { room.set(member.id, member); broadcast('join', member); },
         moveMember(id, x, y) { Object.assign(room.get(id), { x, y }); broadcast('move', { id, x, y }); },
+        chatMember(id, text) { broadcast('chat', { id, text }); },
         removeMember(id) { room.delete(id); broadcast('leave', { id }); },
         dropStreams() { for (const res of streams.values()) res.destroy(); },
         invalidateSessions() { sessions.clear(); },
@@ -168,6 +174,38 @@ test('join connects, applies join/move/leave events and heartbeats; token never 
     const saved = readFileSync(configPath, 'utf8');
     assert.doesNotMatch(saved, /gh-me|s1/);
     assert.deepEqual(Object.keys(JSON.parse(saved)), ['url']);
+});
+
+test('chat validates input and applies temporary messages without changing presence', async (t) => {
+    const lounge = await fakeLounge(t);
+    const { client } = setup(t, { env: { BYTE_BUDDY_LOUNGE_URL: lounge.url } });
+    await assert.rejects(client.chat({ text: 'Not yet' }), { code: 'not_connected' });
+    await client.join({ org: 'acme' });
+    for (const text of [undefined, null, 123, '', '   ', 'x'.repeat(161)]) {
+        await assert.rejects(client.chat({ text }), { code: 'bad_message' });
+    }
+    await client.chat({ text: '  Hello room!  ' });
+    const state = await waitFor(client, (state) => state.members.some((member) => member.chat?.text === 'Hello room!'));
+    assert.deepEqual(lounge.log.chat, [{ text: 'Hello room!' }]);
+    const chat = state.members.find((member) => member.id === 1).chat;
+    assert.ok(chat.expiresAt > Date.now() && chat.expiresAt <= Date.now() + 6000);
+    chat.text = 'Changed copy';
+    assert.equal(client.state().members[0].chat.text, 'Hello room!');
+    lounge.moveMember(1, 1234, 780);
+    await waitFor(client, (state) => state.members[0].x === 1234);
+    assert.equal(client.state().members[0].chat.text, 'Hello room!', 'movement preserves the bubble');
+    lounge.chatMember(999, 'Unknown member');
+    lounge.chatMember(1, '');
+    lounge.chatMember(1, 'x'.repeat(161));
+    await sleep(30);
+    assert.equal(client.state().members.length, 1);
+    assert.equal(client.state().members[0].chat.text, 'Hello room!');
+    t.mock.method(Date, 'now', () => chat.expiresAt + 1);
+    assert.equal(client.state().members[0].chat, undefined, 'expired messages disappear from snapshots');
+    t.mock.restoreAll();
+    await client.leave();
+    assert.deepEqual(client.state().members, []);
+    await assert.rejects(client.chat({ text: 'Too late' }), { code: 'not_connected' });
 });
 
 test('reconnects after a dropped stream without duplicate members', async (t) => {
@@ -327,6 +365,7 @@ test('buddy server exposes lounge routes, broadcasts lounge events and auto-leav
         join: async (body) => { calls.push(['join', body]); if (body.org === 'bad') throw new BuddyError('no_org', 'Nope.'); current = { status: 'connected', org: body.org, members: [] }; events.emit('change'); return current; },
         leave: async () => { calls.push(['leave']); current = { status: 'idle', members: [] }; events.emit('change'); return current; },
         move: (body) => { calls.push(['move', body]); return current; },
+        chat: async (body) => { calls.push(['chat', body]); return current; },
         setServerUrl: async (url) => { calls.push(['config', url]); return current; },
         close: async () => { calls.push(['close']); },
     };
@@ -361,6 +400,8 @@ test('buddy server exposes lounge routes, broadcasts lounge events and auto-leav
     assert.equal((await post('move', { x: 10, y: 70 })).status, 200);
     assert.equal((await post('config', { url: 'https://x.example' })).status, 200);
     assert.deepEqual(calls.slice(0, 4), [['join', { org: 'acme', buddy: { name: 'x' } }], ['join', { org: 'bad', buddy: undefined }], ['move', { x: 10, y: 70 }], ['config', 'https://x.example']]);
+    assert.equal((await post('chat', { text: 'Hello room!', id: 999 })).status, 200);
+    assert.deepEqual(calls.at(-1), ['chat', { text: 'Hello room!' }]);
 
     sse.abort();
     await sleep(200);

@@ -129,6 +129,7 @@ export function createBuddyServer({ store, sync, github, updater, lounge, deskto
             "/api/lounge/join": (body) => lounge.join({ org: body.org, buddy: body.buddy }),
             "/api/lounge/leave": () => lounge.leave(),
             "/api/lounge/move": (body) => lounge.move({ x: body.x, y: body.y }),
+            "/api/lounge/chat": (body) => lounge.chat({ text: body.text }),
             "/api/lounge/config": (body) => lounge.setServerUrl(typeof body.url === "string" ? body.url : ""),
             ...(desktop && lounge.voice ? { "/api/lounge/voice": (body) => lounge.voice(body) } : {}),
         } : {}),

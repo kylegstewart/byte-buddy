@@ -11,7 +11,7 @@ purchased, or authenticated by adding these files.
 
 - Every accepted request uses `idFromName("byte-buddy-lounge")` in the same `LOUNGE`
   namespace, irrespective of user, organization, token, client address, or URL host.
-  This includes health, sessions, streams, moves, heartbeats, leaves, and voice. Never
+  This includes health, sessions, streams, moves, chat, heartbeats, leaves, and voice. Never
   substitute `getRandom()`, per-user/per-org IDs, or round-robin routing: rooms and
   sessions live together in one Node process. `max_instances: 1` is an extra
   production cap, not the mechanism that selects the singleton.

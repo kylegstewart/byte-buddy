@@ -6,7 +6,7 @@ import { createLoungeVoiceView } from "./lounge-voice.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 export const ROOM = { width: WORLD.width, height: WORLD.height, minX: 0, maxX: WORLD.width, minY: 0, maxY: WORLD.height };
 export const SPEED = 140;
-const BUDDY_WIDTH = 64;
+const BUDDY_WIDTH = 80;
 const SEND_INTERVAL_MS = 100;
 const REMOTE_SPEED = SPEED * 1.25;
 const SNAP_DISTANCE = 120;
@@ -72,6 +72,20 @@ export function memberTransform(member) {
     return `translate(${x}px, ${y}px)`;
 }
 
+export function chatLines(text, columns = 28) {
+    const lines = [];
+    let line = "";
+    for (const word of String(text || "").trim().split(/\s+/)) {
+        const characters = Array.from(word);
+        if (line && Array.from(line).length + characters.length + 1 > columns) { lines.push(line); line = ""; }
+        while (characters.length > columns) lines.push(characters.splice(0, columns).join(""));
+        const remainder = characters.join("");
+        if (remainder) line += `${line ? " " : ""}${remainder}`;
+    }
+    if (line) lines.push(line);
+    return lines;
+}
+
 const hex = (color) => `#${color.toString(16).padStart(6, "0")}`;
 
 /** Uploads a painted RGBA buffer into a blob (or data) URL the SVG can show as one pixelated image. */
@@ -123,7 +137,7 @@ function asLoungeState(data) {
 
 export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, buddyViewBox, getOrgs = () => [], getBuddy, reduced = () => false,
     doc = globalThis.document, raf = globalThis.requestAnimationFrame?.bind(globalThis), now = () => globalThis.performance?.now?.() ?? Date.now(),
-    ResizeObserver: Observer = globalThis.ResizeObserver, deadZone = DEAD_ZONE, desktop = false }) {
+    ResizeObserver: Observer = globalThis.ResizeObserver, deadZone = DEAD_ZONE, desktop = false, wallNow = Date.now }) {
     const $ = (id) => doc.getElementById(id);
     const nodes = new Map();
     let lounge = { status: "idle", serverUrl: "", serverUrlSource: null, org: null, self: null, members: [], error: null };
@@ -145,6 +159,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     let camGoal = cam;
     let appliedCam = null;
     let voice = null;
+    let chatSending = false;
 
     function mountScene() {
         const labels = $("loungeLabels");
@@ -213,7 +228,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
 
     function chromeMarkup(member) {
         const name = member.buddy?.name?.trim() || "Byte Buddy";
-        return `<circle class="lounge-voice-ring" cx="37" cy="-40" r="5" aria-hidden="true"/><text class="lounge-label" x="0" y="18" font-size="12" text-anchor="middle">${esc(name)}</text><text class="lounge-username" x="0" y="30" font-size="8" text-anchor="middle">${esc(member.login)}</text>`;
+        return `<circle class="lounge-voice-ring" cx="46" cy="-50" r="5" aria-hidden="true"/><text class="lounge-label" x="0" y="18" font-size="12" text-anchor="middle">${esc(name)}</text><text class="lounge-username" x="0" y="30" font-size="8" text-anchor="middle">${esc(member.login)}</text>`;
     }
 
     function spriteMarkup(buddy, pose, frame, look, still) {
@@ -236,6 +251,24 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         entry.spriteKey = key;
     }
 
+    function drawChat(entry) {
+        const chat = available && lounge.status === "connected" && entry.chat?.expiresAt > wallNow() ? entry.chat : null;
+        const key = chat ? JSON.stringify([chat.text, chat.expiresAt, entry.buddyKey, entry.login]) : "";
+        if (entry.chatKey === key) return Boolean(chat);
+        entry.chatKey = key;
+        entry.bubble.style.display = chat ? "" : "none";
+        entry.bubble.setAttribute("aria-label", chat ? `${entry.login}: ${chat.text}` : "");
+        if (!chat) { entry.bubble.innerHTML = ""; return false; }
+        const lines = chatLines(chat.text);
+        const width = Math.max(52, ...lines.map((line) => line.length * 7.5 + 20));
+        const height = lines.length * 16 + 16;
+        const [, top, spriteWidth] = String(buddyViewBox(entry.buddy.stage, entry.buddy.variant, entry.buddy.type)).split(/\s+/).map(Number);
+        const bottom = top * BUDDY_WIDTH / spriteWidth - 10;
+        const y = bottom - height;
+        entry.bubble.innerHTML = `<rect x="${-width / 2}" y="${y}" width="${width}" height="${height}" rx="8"/><path d="M -6 ${bottom} L 0 ${bottom + 7} L 6 ${bottom}"/><text text-anchor="middle">${lines.map((line, index) => `<tspan x="0" y="${y + 20 + index * 16}">${esc(line)}</tspan>`).join("")}</text>`;
+        return true;
+    }
+
     function place(entry, pos, time) {
         const dx = pos.x - entry.pos.x, dy = pos.y - entry.pos.y;
         if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) {
@@ -244,6 +277,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         }
         entry.pos = pos;
         entry.el.style.transform = memberTransform(pos);
+        entry.bubble.style.transform = memberTransform(pos);
     }
 
     function sortByDepth() {
@@ -276,6 +310,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
             const next = entry.self && selfPos ? selfPos : approach(entry.pos, entry.target, REMOTE_SPEED * dt);
             place(entry, next, time);
             drawSprite(entry, time);
+            if (drawChat(entry)) active = true;
             if (next.x !== entry.target.x || next.y !== entry.target.y || time - entry.movedAt < WALK_LINGER_MS) active = true;
         }
         voice?.position(selfPos);
@@ -297,7 +332,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         if (!layer) return;
         const self = selfMember();
         const plan = diffMembers(nodes.keys(), lounge.members);
-        for (const id of plan.remove) { nodes.get(id).el.remove(); nodes.delete(id); }
+        for (const id of plan.remove) { nodes.get(id).el.remove(); nodes.get(id).bubble.remove(); nodes.delete(id); }
         if (plan.remove.length) order = order.filter((entry) => nodes.has(entry.id));
         const time = now();
         for (const [id, member] of plan.next) {
@@ -318,16 +353,24 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
                 const sprite = doc.createElementNS(SVG_NS, "g");
                 sprite.setAttribute("class", "lounge-sprite");
                 const chrome = doc.createElementNS(SVG_NS, "g");
+                const bubble = doc.createElementNS(SVG_NS, "g");
+                bubble.setAttribute("class", "lounge-chat-bubble");
+                bubble.setAttribute("data-id", id);
+                bubble.setAttribute("role", "img");
                 el.appendChild(sprite);
                 el.appendChild(chrome);
                 const start = isSelf ? selfPos : target;
-                entry = { id, el, sprite, chrome, key: null, buddy: {}, buddyKey: "", spriteKey: null, pos: start, target: start, look: 0, movedAt: -Infinity, self: false };
+                entry = { id, el, sprite, chrome, bubble, key: null, buddy: {}, buddyKey: "", spriteKey: null, pos: start, target: start, look: 0, movedAt: -Infinity, self: false };
                 nodes.set(id, entry);
                 el.style.transform = memberTransform(start);
+                bubble.style.transform = memberTransform(start);
                 layer.appendChild(el);
+                $("loungeChatLayer").appendChild(bubble);
             }
             entry.target = isSelf ? selfPos : target;
             entry.self = isSelf;
+            entry.chat = member.chat;
+            entry.login = member.login;
             if (!raf) place(entry, entry.target, time);
             const key = JSON.stringify([member.login, member.buddy?.name, isSelf]);
             if (entry.key !== key) {
@@ -338,6 +381,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
             const buddyKey = JSON.stringify(member.buddy || {});
             if (entry.buddyKey !== buddyKey) { entry.buddy = member.buddy || {}; entry.buddyKey = buddyKey; }
             drawSprite(entry, time);
+            drawChat(entry);
         }
         sortByDepth();
         applyCamera();
@@ -389,6 +433,13 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         const host = $("loungeStatus");
         if (host.textContent !== status) host.textContent = status;
         host.dataset.status = available ? lounge.status : "unavailable";
+        renderChatControls();
+    }
+
+    function renderChatControls() {
+        const input = $("loungeChatInput");
+        input.disabled = !available || lounge.status !== "connected";
+        $("loungeChatSend").disabled = input.disabled || chatSending || !input.value.trim();
     }
 
     function render() {
@@ -413,6 +464,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     function unavailable() {
         available = false;
         voice?.deactivate();
+        for (const entry of nodes.values()) drawChat(entry);
         renderControls();
     }
 
@@ -447,7 +499,30 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         }
     }
 
+    async function sendChat() {
+        const input = $("loungeChatInput");
+        const draft = input.value;
+        const text = draft.trim();
+        if (!available || lounge.status !== "connected" || chatSending || !text) return;
+        chatSending = true;
+        renderChatControls();
+        try {
+            await api("/api/lounge/chat", { text });
+            if (input.value === draft) input.value = "";
+        } catch (error) {
+            toast(`Lounge: ${error.message}`, "err");
+        } finally {
+            chatSending = false;
+            renderChatControls();
+        }
+    }
+
     function wire() {
+        $("loungeChatForm").addEventListener("submit", (event) => { event.preventDefault(); void sendChat(); });
+        $("loungeChatInput").addEventListener("input", renderChatControls);
+        $("loungeChatInput").addEventListener("keydown", (event) => {
+            if (event.key === "Escape") { event.preventDefault(); $("loungeRoom").focus(); }
+        });
         $("loungeUrl").addEventListener("input", () => { urlDirty = true; });
         $("loungeUrlForm").addEventListener("submit", (event) => {
             event.preventDefault();
@@ -461,6 +536,12 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         $("loungeLeave").addEventListener("click", () => { voice?.deactivate(); void action("/api/lounge/leave", {}); });
         const room = $("loungeRoom");
         room.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey && lounge.status === "connected") {
+                event.preventDefault();
+                stopMoving();
+                $("loungeChatInput").focus();
+                return;
+            }
             if (!directionForKey(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
             event.preventDefault();
             if (lounge.status !== "connected" || !selfPos) return;

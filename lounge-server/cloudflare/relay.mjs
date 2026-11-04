@@ -7,6 +7,7 @@ const ROUTES = new Set([
     "GET /v1/stream",
     "POST /v1/session",
     "POST /v1/move",
+    "POST /v1/chat",
     "POST /v1/heartbeat",
     "POST /v1/leave",
     "POST /v1/voice",
