@@ -364,8 +364,8 @@ Changing voice IDs or replacing streams does not reset these limits. Leave is
 always available. Ordinary errors use `{ok:false,code,error}`: authentication
 `401 bad_session`, no matching active stream `409 voice_not_in_room`, stale
 voice/subscription `409 voice_stale`, invalid audio SDP `400 bad_voice_sdp`,
-rate limiting `429 voice_rate_limited`, generic upstream failure
-`502 voice_upstream`, and unavailable cleanup `503 voice_unavailable`.
+rate limiting `429 voice_rate_limited`, and generic upstream failure
+`502 voice_upstream`.
 
 ### Authorization, cleanup, and operational limits
 
@@ -383,32 +383,35 @@ rate limiting `429 voice_rate_limited`, generic upstream failure
   retained and force-closed too. A pending request cannot resurrect a retired
   receiver/publisher; its response is discarded after resource cleanup.
 - Cleanup checks every requested mid's result, including HTTP-200 item failures.
-  It makes at most three attempts per cleanup pass with bounded delays; each
-  Cloudflare request has an eight-second timeout. On a receiver close failure,
-  the listener and its source publishers' voice states are invalidated and their
-  tracks also retired, providing a server-side source cutoff while retrying.
-  Exhausted or ambiguous cleanup disables further voice globally, closes other
-  known voice resources, retains unresolved resource state in memory, and logs
-  an operational warning with the resource role, allocation uncertainty, and
-  remaining track count. Sanitized failure diagnostics include only the operation,
-  failure category, HTTP status when available, and allowlisted public error codes.
-  Unknown codes are replaced with `unknown`; tokens, resource IDs, SDP, response
-  bodies, and upstream error descriptions are never logged. Presence continues.
-  A normal shutdown makes one final bounded cleanup pass.
-- A timeout/lost response is not proof an allocation failed; inspecting an empty
-  SFU session is not proof an in-flight request cannot finish later. Ambiguous
-  allocation cleanup remains unresolved and disables voice conservatively. There
-  is no session-delete API in the documented Connection API: empty/unconnected
-  retired sessions are left to Cloudflare's lifecycle, while media tracks are
-  explicitly closed. The process retains known IDs for cleanup until shutdown.
-- An SFU control-plane outage cannot guarantee immediate media cutoff. Nor can
-  forced close retract packets already sent or buffered. Treat an unconfirmed
-  cleanup warning as an operational privacy incident, not successful muting.
-  Restore Cloudflare control-plane access and gracefully drain/retry cleanup;
-  do not simply restart and lose unresolved state. If closure cannot be verified,
-  disable/revoke the affected dedicated SFU app via Cloudflare before recovery.
-  Voice is intentionally unavailable until operator remediation and a fresh
-  process; no automatic mic recapture or recording is provided.
+  A per-track `close_track_error` (already absent) counts as closed, and so does
+  HTTP 410 `session_error` for the whole SFU session: the SFU returns it once the
+  session's PeerConnection has closed, which is the normal outcome when a client
+  drops its connection before the server's close request arrives. It makes at
+  most three attempts per cleanup pass with bounded delays; each Cloudflare
+  request has an eight-second timeout. On a close failure, the listener and its
+  source publishers' voice states are invalidated and their tracks also retired,
+  so every affected client receives `409 voice_stale` on its next request and
+  drops its PeerConnections: that is the media cutoff. The server then retries
+  the close in the background after 2, 10, 30, and 60 seconds and logs
+  `lounge: voice cleanup unconfirmed; retrying` (or `; giving up` after the last
+  attempt) with the resource role, attempt, allocation uncertainty, and remaining
+  track count. A failed cleanup does **not** disable voice for anyone else.
+  Sanitized failure diagnostics include only the operation, failure category,
+  HTTP status when available, and allowlisted public error codes. Unknown codes
+  are replaced with `unknown`; tokens, resource IDs, SDP, response bodies, and
+  upstream error descriptions are never logged. A normal shutdown makes one final
+  bounded cleanup pass.
+- A timeout/lost allocation response is not proof the allocation failed, so its
+  cleanup first inspects the SFU session and force-closes any tracks found there.
+  A late allocation that lands afterwards cannot carry media: the client never
+  received the SDP it needs to connect that session. There is no session-delete
+  API in the documented Connection API: empty/unconnected retired sessions are
+  left to Cloudflare's lifecycle, while media tracks are explicitly closed.
+- An SFU control-plane outage cannot guarantee immediate server-side close, nor
+  can forced close retract packets already sent or buffered. The cutoff then
+  relies on the revoked clients closing their connections; Cloudflare also
+  garbage-collects tracks that receive no media for 30 seconds. No automatic mic
+  recapture or recording is provided.
 - Each join generates TURN credentials with a 3,600-second TTL and returns only
   Cloudflare STUN/TURN endpoints on ports 3478, 5349, and 443, requiring TURN over
   TLS on port 443. Browser-blocked port 53, alternate port 80, custom domains, and
@@ -418,37 +421,46 @@ rate limiting `429 voice_rate_limited`, generic upstream failure
   publication/room access credentials. GitHub tokens only authenticate against
   GitHub and never go to the SFU/TURN service.
 
-### Diagnosing a cleanup lockout
-
-`503 voice_unavailable` on `join` means an earlier operation already disabled
-voice in the hosted relay. That join does not reach TURN credential generation
-or client ICE gathering. Restarting or updating the desktop cannot clear it.
+### Diagnosing voice cleanup warnings
 
 Inspect the **Lounge container application logs**, not just the Worker's request
 status. In Cloudflare's **Observability > Logs**, select the **Containers**
 dataset rather than HTTP requests or security events, then filter to the Lounge
-and the time of the first failure. Worker application logs are also available
-under Workers & Pages / the Lounge Worker / Observability.
-Find the first `lounge: voice diagnostic` entry before
-`lounge: voice cleanup unconfirmed`. For example:
+and the time of the failure. Worker application logs are also available under
+Workers & Pages / the Lounge Worker / Observability. Find the
+`lounge: voice diagnostic` entry before `lounge: voice cleanup unconfirmed`.
+For example:
 
 ```text
-lounge: voice diagnostic {"operation":"tracks_new","reason":"timeout"}
-lounge: voice cleanup unconfirmed; voice disabled until server restart {"role":"publisher","uncertainAllocation":true,"remainingTracks":0}
+lounge: voice diagnostic {"operation":"tracks_close","reason":"request_error","status":503,"errorCodes":["retryable_transient_error"]}
+lounge: voice cleanup unconfirmed; retrying {"role":"publisher","attempt":1,"uncertainAllocation":false,"remainingTracks":1}
 ```
 
 `tracks_new` with `timeout` means an allocation outcome is unknown, even when the
 remaining track count is zero. `tracks_close` diagnostics identify failed close
 requests, including per-track errors inside HTTP 200 responses. Check the HTTP
 status and public error code against Cloudflare's error reference; do not infer
-that a client network restriction caused a server-to-SFU API failure.
+that a client network restriction caused a server-to-SFU API failure. Repeated
+`giving up` warnings point at the SFU app or its credentials: check the Realtime
+dashboard and rotate or revoke the dedicated SFU app if closure must be forced.
 
-Older deployments log only the fixed cleanup warning and cannot reconstruct the
-original upstream failure. After accounting for existing resources using the
-recovery guidance above, deploy the updated relay to a fresh container process,
-then capture its sanitized diagnostics if the failure recurs. A desktop rebuild
-alone does not deploy this server change. Do not remove the lockout or reset it
-automatically to recover service.
+Relays deployed before this change disabled voice for everyone after the first
+unconfirmed cleanup (`503 voice_unavailable`, "Voice is disabled until the
+service is restarted") and kept that state for the life of the container process.
+Deploying the updated relay replaces that process.
+
+### Durable Object resets
+
+`Connection closed: this Durable Object instance is no longer active. Reconnect
+or retry the request.` is a Cloudflare platform message. The `LOUNGE` Durable
+Object instance was replaced while a request, usually the long-lived `/v1/stream`,
+was passing through it. Cloudflare replaces instances on every Worker version
+deployment (including each `wrangler secret put`), on Workers runtime updates,
+and when it relocates objects. The desktop reconnects the stream automatically,
+and the new member replaces the old one, which ends that player's voice session:
+select **Enable voice** again. The Node container usually keeps running across
+these resets, so its in-memory state (including any voice state) survives them,
+and the activity timer keeps it awake while any player's stream is open.
 
 Backend tests (mock Cloudflare transport; no live credentials):
 
