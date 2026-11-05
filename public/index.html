@@ -353,21 +353,24 @@
       </aside>
       <section class="card connection-stack lounge-world" aria-label="Multiplayer world">
         <p id="loungeStatus" class="lounge-status" role="status" aria-live="polite">Not in the lounge.</p>
-        <svg id="loungeRoom" class="lounge-room" viewBox="0 0 720 450" shape-rendering="crispEdges" tabindex="0" role="application" aria-label="Lounge room. Join an organization to see who's here.">
-          <g id="loungeSceneryFar"></g>
-          <g id="loungeSceneryMid"></g>
-          <g id="loungeSceneryNear"></g>
-          <g id="loungeMap"></g>
-          <g id="loungeLabels"></g>
-          <g id="loungeMembersLayer"></g>
-          <g id="loungeChatLayer" aria-live="polite" aria-relevant="additions text"></g>
-        </svg>
-        <form id="loungeChatForm" class="lounge-row lounge-chat" aria-label="Lounge chat">
-          <label for="loungeChatInput">Say something<input id="loungeChatInput" type="text" maxlength="160" placeholder="Message the room…" autocomplete="off" aria-describedby="loungeChatHint" disabled></label>
-          <button id="loungeChatSend" type="submit" class="btn btn-primary" disabled>Send</button>
-        </form>
+        <div class="lounge-room-stage">
+          <svg id="loungeRoom" class="lounge-room" viewBox="0 0 720 450" shape-rendering="crispEdges" tabindex="0" role="application" aria-label="Lounge room. Join an organization to see who's here.">
+            <g id="loungeSceneryFar"></g>
+            <g id="loungeSceneryMid"></g>
+            <g id="loungeSceneryNear"></g>
+            <g id="loungeMap"></g>
+            <g id="loungeLabels"></g>
+            <g id="loungeMembersLayer"></g>
+            <g id="loungeChatLayer" aria-live="polite" aria-relevant="additions text"></g>
+          </svg>
+          <button id="loungeChatOpen" type="button" class="btn btn-sm lounge-chat-open" aria-controls="loungeChatForm" aria-expanded="false" hidden>Chat (Enter)</button>
+          <form id="loungeChatForm" class="lounge-row lounge-chat" aria-label="Lounge chat" hidden>
+            <label for="loungeChatInput">Say something<input id="loungeChatInput" type="text" maxlength="160" placeholder="Message the room…" autocomplete="off" aria-describedby="loungeChatHint" disabled></label>
+            <button id="loungeChatSend" type="submit" class="btn btn-primary" disabled>Send</button>
+          </form>
+        </div>
         <p id="loungeChatHint" class="hint">Messages appear above your buddy for 6 seconds. Up to 160 characters.</p>
-        <p class="hint">Focus the room and use arrow keys to move. Press Enter to chat, or Esc while typing to return to the room.</p>
+        <p class="hint">Use arrow keys to move. Press Enter to open chat, Enter again to send, or Esc to cancel and return to the room.</p>
       </section>
     </div>
   </main>

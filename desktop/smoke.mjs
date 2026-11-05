@@ -78,12 +78,25 @@ export async function checkDesktopWindow(window, screenshots) {
                 const sidebar = document.querySelector(".lounge-sidebar").getBoundingClientRect();
                 const world = document.querySelector(".lounge-world").getBoundingClientRect();
                 const room = document.getElementById("loungeRoom").getBoundingClientRect();
+                const chat = document.getElementById("loungeChatForm");
+                const chatHidden = chat.hidden;
+                chat.hidden = false;
+                const composer = chat.getBoundingClientRect();
+                const send = document.getElementById("loungeChatSend").getBoundingClientRect();
+                const chatInsideRoom = composer.left >= room.left && composer.right <= room.right
+                    && composer.top >= room.top && composer.bottom <= room.bottom;
+                const chatFits = send.right <= composer.right && composer.height > 0
+                    && document.documentElement.scrollWidth <= innerWidth + 1;
+                const stableRoomHeight = document.getElementById("loungeRoom").getBoundingClientRect().height === room.height;
+                chat.hidden = chatHidden;
                 return { overflow: document.documentElement.scrollWidth > innerWidth + 1, sideBySide: world.left >= sidebar.right,
-                    roomWidth: room.width, roomHeight: room.height, buddyHidden: document.getElementById("buddyView").hidden };
+                    roomWidth: room.width, roomHeight: room.height, buddyHidden: document.getElementById("buddyView").hidden,
+                    chatInsideRoom, chatFits, stableRoomHeight };
             });
             assert.equal(lounge.overflow, false, `Lounge horizontal overflow at ${width}px`);
             assert.equal(lounge.sideBySide, width >= 960, `Lounge columns at ${width}px`);
             assert.ok(lounge.roomWidth > 0 && lounge.roomHeight > 0 && lounge.buddyHidden);
+            assert.ok(lounge.chatInsideRoom && lounge.chatFits && lounge.stableRoomHeight, `In-room chat layout at ${width}px`);
             if (width === 1200 || width === 480) await capture(`lounge-${width}.png`);
             await evaluate(() => document.getElementById("loungeBack").click());
             result.layouts.push({ viewport: width, buddy, lounge });

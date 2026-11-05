@@ -368,6 +368,7 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
 .lounge-status { margin: 0; font-size: 12px; padding: 8px; border-left: 3px solid var(--db-accent); background: var(--db-surface); }
 .lounge-status[data-status="connected"] { border-left-color: var(--db-green); }
 .lounge-status[data-status="error"], .lounge-status[data-status="unavailable"] { border-left-color: var(--db-red); }
+.lounge-room-stage { position: relative; min-width: 0; }
 .lounge-room { display: block; width: 100%; height: clamp(260px, 60vh, 560px); overflow: hidden; border: 1px solid var(--db-border); border-radius: var(--db-radius); background: #8fb8dc; cursor: default; }
 .lounge-world .lounge-room { height: clamp(280px, calc(100dvh - 240px), 760px); }
 .lounge-room-label { fill: rgba(255, 255, 255, .85); paint-order: stroke; stroke: rgba(20, 24, 32, .75); stroke-width: 3px; font-size: 15px; font-family: ui-monospace, Consolas, monospace; letter-spacing: 1px; pointer-events: none; }
@@ -376,11 +377,13 @@ button.stat:hover, .chart-card[data-chart-key]:hover { border-color: var(--db-ac
 .lounge-label { fill: #9edcff; }
 .lounge-self .lounge-label { fill: #ffd84a; }
 .lounge-username { fill: #d2d9e3; }
+.lounge-chat-open { position: absolute; left: 12px; bottom: 12px; }
+.lounge-chat { position: absolute; left: 12px; right: 12px; bottom: 12px; flex-wrap: nowrap; padding: 10px; border: 1px solid var(--db-border); border-radius: var(--db-radius); background: var(--db-surface); }
 .lounge-chat label { display: grid; gap: 4px; min-width: 0; }
 .lounge-chat input { min-width: 0; }
 .lounge-chat-bubble { pointer-events: none; }
 .lounge-chat-bubble rect, .lounge-chat-bubble path { fill: var(--db-surface); stroke: var(--db-border); stroke-width: 1.5; }
-.lounge-chat-bubble text { fill: var(--db-fg); font: 12px ui-monospace, Consolas, monospace; }
+.lounge-chat-bubble text { fill: var(--db-fg); font: 10px ui-monospace, Consolas, monospace; }
 .lounge-members { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .lounge-voice select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 8px; border: 1px solid var(--db-border); border-radius: 6px; background: var(--db-bg); color: var(--db-fg); font: inherit; }
 .lounge-voice .section-title { margin: 0; }

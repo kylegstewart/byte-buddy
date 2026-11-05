@@ -160,6 +160,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     let appliedCam = null;
     let voice = null;
     let chatSending = false;
+    let chatOpen = false;
 
     function mountScene() {
         const labels = $("loungeLabels");
@@ -260,12 +261,12 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         entry.bubble.setAttribute("aria-label", chat ? `${entry.login}: ${chat.text}` : "");
         if (!chat) { entry.bubble.innerHTML = ""; return false; }
         const lines = chatLines(chat.text);
-        const width = Math.max(52, ...lines.map((line) => line.length * 7.5 + 20));
-        const height = lines.length * 16 + 16;
+        const width = Math.max(44, ...lines.map((line) => Array.from(line).length * 6.25 + 16));
+        const height = lines.length * 13 + 12;
         const [, top, spriteWidth] = String(buddyViewBox(entry.buddy.stage, entry.buddy.variant, entry.buddy.type)).split(/\s+/).map(Number);
         const bottom = top * BUDDY_WIDTH / spriteWidth - 10;
         const y = bottom - height;
-        entry.bubble.innerHTML = `<rect x="${-width / 2}" y="${y}" width="${width}" height="${height}" rx="8"/><path d="M -6 ${bottom} L 0 ${bottom + 7} L 6 ${bottom}"/><text text-anchor="middle">${lines.map((line, index) => `<tspan x="0" y="${y + 20 + index * 16}">${esc(line)}</tspan>`).join("")}</text>`;
+        entry.bubble.innerHTML = `<rect x="${-width / 2}" y="${y}" width="${width}" height="${height}" rx="6"/><path d="M -5 ${bottom} L 0 ${bottom + 6} L 5 ${bottom}"/><text text-anchor="middle">${lines.map((line, index) => `<tspan x="0" y="${y + 15 + index * 13}">${esc(line)}</tspan>`).join("")}</text>`;
         return true;
     }
 
@@ -388,7 +389,7 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         queueFrame();
         const room = $("loungeRoom");
         room.setAttribute("aria-label", lounge.status === "connected"
-            ? `Lounge room with ${plan.next.size} buddies. Hold the arrow keys to walk your buddy.`
+            ? `Lounge room with ${plan.next.size} buddies. Hold the arrow keys to walk your buddy. Press Enter to chat.`
             : "Lounge room. Join an organization to see who's here.");
     }
 
@@ -439,7 +440,26 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     function renderChatControls() {
         const input = $("loungeChatInput");
         input.disabled = !available || lounge.status !== "connected";
+        if (input.disabled) chatOpen = false;
+        $("loungeChatForm").hidden = !chatOpen;
+        $("loungeChatOpen").hidden = input.disabled || chatOpen;
+        $("loungeChatOpen").setAttribute("aria-expanded", String(chatOpen));
         $("loungeChatSend").disabled = input.disabled || chatSending || !input.value.trim();
+    }
+
+    function openChat() {
+        if (!available || lounge.status !== "connected") return;
+        stopMoving();
+        chatOpen = true;
+        renderChatControls();
+        $("loungeChatInput").focus({ preventScroll: true });
+    }
+
+    function closeChat(returnFocus = false) {
+        const wasOpen = chatOpen;
+        chatOpen = false;
+        renderChatControls();
+        if (wasOpen && returnFocus && !doc.hidden && !$("loungeView")?.hidden) $("loungeRoom").focus({ preventScroll: true });
     }
 
     function render() {
@@ -508,7 +528,10 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         renderChatControls();
         try {
             await api("/api/lounge/chat", { text });
-            if (input.value === draft) input.value = "";
+            if (input.value === draft) {
+                input.value = "";
+                closeChat(doc.activeElement === input || doc.activeElement === $("loungeChatSend"));
+            }
         } catch (error) {
             toast(`Lounge: ${error.message}`, "err");
         } finally {
@@ -518,10 +541,16 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     }
 
     function wire() {
+        $("loungeChatOpen").addEventListener("click", openChat);
         $("loungeChatForm").addEventListener("submit", (event) => { event.preventDefault(); void sendChat(); });
         $("loungeChatInput").addEventListener("input", renderChatControls);
         $("loungeChatInput").addEventListener("keydown", (event) => {
-            if (event.key === "Escape") { event.preventDefault(); $("loungeRoom").focus(); }
+            if (event.isComposing || event.keyCode === 229) return;
+            if (event.key === "Escape") { event.preventDefault(); closeChat(true); }
+            else if (event.key === "Enter") {
+                event.preventDefault();
+                if (!event.repeat) void sendChat();
+            }
         });
         $("loungeUrl").addEventListener("input", () => { urlDirty = true; });
         $("loungeUrlForm").addEventListener("submit", (event) => {
@@ -535,11 +564,15 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
         });
         $("loungeLeave").addEventListener("click", () => { voice?.deactivate(); void action("/api/lounge/leave", {}); });
         const room = $("loungeRoom");
+        room.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0) return;
+            closeChat();
+            room.focus({ preventScroll: true });
+        });
         room.addEventListener("keydown", (event) => {
             if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey && lounge.status === "connected") {
                 event.preventDefault();
-                stopMoving();
-                $("loungeChatInput").focus();
+                if (!event.repeat && !event.isComposing) openChat();
                 return;
             }
             if (!directionForKey(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -567,6 +600,6 @@ export function createLoungeView({ api, esc, toast = () => {}, renderBuddy, budd
     renderControls();
     measure();
     applyCamera();
-    return { update, render, unavailable, sendMove, deactivate() { stopMoving(); voice.deactivate(); }, get state() { return lounge; }, get available() { return available; },
+    return { update, render, unavailable, sendMove, deactivate() { stopMoving(); closeChat(); voice.deactivate(); }, get state() { return lounge; }, get available() { return available; },
         get camera() { return { ...cam }; }, get view() { return { ...view }; }, get position() { return selfPos && { ...selfPos }; } };
 }

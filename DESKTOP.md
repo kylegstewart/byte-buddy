@@ -39,6 +39,11 @@ windows place the buddy beside the gameplay panels and Lounge controls beside
 the world; narrower windows stack these areas. The Copilot canvas keeps its
 compact width.
 
+While walking in the Lounge, press **Enter** to open chat inside the room.
+Press **Enter** again to send and return to movement, or **Esc** to close chat
+without losing the draft. The **Chat (Enter)** button also opens the composer.
+Sending failures keep the composer and draft available for retry.
+
 ## Fresh desktop start
 
 Every new desktop installation starts a new buddy and progression profile.

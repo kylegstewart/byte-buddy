@@ -75,15 +75,21 @@ class FakeNode {
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
     dispatch(type, event = {}) { for (const fn of this.listeners[type] || []) fn({ preventDefault() {}, ...event }); }
     getBoundingClientRect() { return { left: 0, top: 0, width: 160, height: 120 }; }
-    focus() { this.focused = true; }
+    focus(options) {
+        if (this.ownerDocument?.activeElement) this.ownerDocument.activeElement.focused = false;
+        if (this.ownerDocument) this.ownerDocument.activeElement = this;
+        this.focused = true;
+        this.focusOptions = options;
+    }
 }
 
 function harness({ api: request, ...docExtras } = {}) {
     const ids = ["loungeUrlForm", "loungeUrl", "loungeUrlSave", "loungeUrlNote", "loungeOrg", "loungeOrgHint", "loungeJoin", "loungeLeave",
         "loungeStatus", "loungeRoom", "loungeMembersLayer", "loungeMemberList", "loungeSceneryFar", "loungeSceneryMid", "loungeSceneryNear", "loungeMap", "loungeLabels",
-        "loungeChatLayer", "loungeChatForm", "loungeChatInput", "loungeChatSend"];
+        "loungeChatLayer", "loungeChatForm", "loungeChatOpen", "loungeChatInput", "loungeChatSend", "loungeView"];
     const elements = Object.fromEntries(ids.map((id) => [id, new FakeNode(id)]));
     const doc = { getElementById: (id) => elements[id] || null, createElementNS: (_ns, tag) => new FakeNode(tag), ...docExtras };
+    for (const element of Object.values(elements)) element.ownerDocument = doc;
     const calls = [];
     const toasts = [];
     const frames = [];
@@ -102,7 +108,7 @@ function harness({ api: request, ...docExtras } = {}) {
             frames.splice(0).forEach((fn) => fn());
         }
     };
-    return { view, elements, calls, toasts, frames, run, clock, layer: elements.loungeMembersLayer };
+    return { view, elements, doc, calls, toasts, frames, run, clock, layer: elements.loungeMembersLayer };
 }
 
 const xOf = (node) => Number(/translate\(([\d.]+)px/.exec(node.style.transform)[1]);
@@ -204,10 +210,13 @@ test("chat sends trimmed messages only when connected and ignores duplicate subm
 test("failed chat sends preserve the draft and show the server error", async () => {
     const { view, elements, toasts } = harness({ api: async () => { throw new Error("Wait a second."); } });
     view.update(connected([]));
+    elements.loungeChatOpen.dispatch("click");
     elements.loungeChatInput.value = "Try again";
     elements.loungeChatForm.dispatch("submit");
     await flush();
     assert.equal(elements.loungeChatInput.value, "Try again");
+    assert.equal(elements.loungeChatForm.hidden, false);
+    assert.equal(elements.loungeChatInput.focused, true);
     assert.equal(elements.loungeChatSend.disabled, false);
     assert.deepEqual(toasts, [["Lounge: Wait a second.", "err"]]);
 });
@@ -216,26 +225,140 @@ test("chat keeps edits typed during an in-flight send", async () => {
     let finish;
     const { view, elements } = harness({ api: () => new Promise((resolve) => { finish = resolve; }) });
     view.update(connected([]));
+    elements.loungeChatOpen.dispatch("click");
     elements.loungeChatInput.value = "First message";
     elements.loungeChatForm.dispatch("submit");
     elements.loungeChatInput.value = "Next message";
     finish({});
     await flush();
     assert.equal(elements.loungeChatInput.value, "Next message");
+    assert.equal(elements.loungeChatForm.hidden, false);
+    assert.equal(elements.loungeChatInput.focused, true);
 });
 
 test("Enter starts chat and stops movement; Escape returns focus to the room", () => {
     const { view, elements, run } = harness();
     view.update(connected([{ id: "1", login: "me", buddy: {}, x: 1600, y: 780 }]));
+    assert.equal(elements.loungeChatForm.hidden, true);
+    assert.equal(elements.loungeChatOpen.hidden, false);
     elements.loungeRoom.dispatch("keydown", { key: "ArrowRight" });
     run(100);
     elements.loungeRoom.dispatch("keydown", { key: "Enter" });
     assert.equal(elements.loungeChatInput.focused, true);
+    assert.deepEqual(elements.loungeChatInput.focusOptions, { preventScroll: true });
+    assert.equal(elements.loungeChatForm.hidden, false);
+    assert.equal(elements.loungeChatOpen.hidden, true);
+    assert.equal(elements.loungeChatOpen.attrs["aria-expanded"], "true");
+    elements.loungeChatInput.value = "Unsent draft";
     const position = { ...view.position };
     run(100);
     assert.deepEqual(view.position, position);
     elements.loungeChatInput.dispatch("keydown", { key: "Escape" });
     assert.equal(elements.loungeRoom.focused, true);
+    assert.equal(elements.loungeChatForm.hidden, true);
+    assert.equal(elements.loungeChatOpen.attrs["aria-expanded"], "false");
+    assert.equal(elements.loungeChatInput.value, "Unsent draft");
+    elements.loungeRoom.dispatch("keydown", { key: "Enter" });
+    assert.equal(elements.loungeChatInput.value, "Unsent draft");
+    assert.equal(elements.loungeChatInput.focused, true);
+});
+
+test("Enter sends the in-room chat and restores arrow-key movement without clicking", async () => {
+    const { view, elements, calls, run } = harness();
+    view.update(connected([{ id: "1", login: "me", buddy: {}, x: 1600, y: 780 }]));
+    elements.loungeRoom.dispatch("keydown", { key: "Enter" });
+    elements.loungeChatInput.value = "  Hello room!  ";
+    elements.loungeChatInput.dispatch("keydown", { key: "ArrowRight" });
+    run(100);
+    assert.deepEqual(view.position, { x: 1600, y: 780 });
+    elements.loungeChatInput.dispatch("keydown", { key: "Enter" });
+    await flush();
+    assert.deepEqual(calls, [["/api/lounge/chat", { text: "Hello room!" }]]);
+    assert.equal(elements.loungeChatInput.value, "");
+    assert.equal(elements.loungeChatForm.hidden, true);
+    assert.equal(elements.loungeRoom.focused, true);
+    assert.deepEqual(elements.loungeRoom.focusOptions, { preventScroll: true });
+    elements.loungeRoom.dispatch("keydown", { key: "ArrowRight" });
+    run(100);
+    assert.ok(view.position.x > 1600);
+});
+
+test("held Enter, IME composition and empty drafts never send chat or reopen the composer", async () => {
+    const { view, elements, calls } = harness();
+    view.update(connected([]));
+    elements.loungeRoom.dispatch("keydown", { key: "Enter", repeat: true });
+    assert.equal(elements.loungeChatForm.hidden, true);
+    elements.loungeRoom.dispatch("keydown", { key: "Enter" });
+    elements.loungeChatInput.value = "Draft";
+    elements.loungeChatInput.dispatch("keydown", { key: "Enter", repeat: true });
+    elements.loungeChatInput.dispatch("keydown", { key: "Enter", isComposing: true });
+    elements.loungeChatInput.dispatch("keydown", { key: "Enter", keyCode: 229 });
+    elements.loungeChatInput.dispatch("keydown", { key: "Escape", isComposing: true });
+    await flush();
+    assert.deepEqual(calls, []);
+    assert.equal(elements.loungeChatForm.hidden, false);
+    elements.loungeChatInput.value = "   ";
+    elements.loungeChatInput.dispatch("keydown", { key: "Enter" });
+    await flush();
+    assert.deepEqual(calls, []);
+    assert.equal(elements.loungeChatForm.hidden, false);
+});
+
+test("clicking the room focuses movement and cancels chat without discarding the draft", () => {
+    const { view, elements, calls } = harness();
+    view.update(connected([]));
+    elements.loungeChatOpen.dispatch("click");
+    elements.loungeChatInput.value = "Keep this";
+    elements.loungeRoom.dispatch("pointerdown", { button: 0 });
+    assert.equal(elements.loungeChatForm.hidden, true);
+    assert.equal(elements.loungeRoom.focused, true);
+    assert.equal(elements.loungeChatInput.value, "Keep this");
+    assert.deepEqual(calls, []);
+});
+
+test("leaving, reconnecting, and unavailable states close chat until explicitly opened again", () => {
+    const { view, elements } = harness();
+    assert.equal(elements.loungeChatOpen.hidden, true);
+    elements.loungeChatOpen.dispatch("click");
+    assert.equal(elements.loungeChatForm.hidden, true);
+    view.update(connected([]));
+    for (const stop of [() => view.deactivate(), () => view.update({ status: "reconnecting", members: [] }), () => view.unavailable()]) {
+        elements.loungeChatOpen.dispatch("click");
+        assert.equal(elements.loungeChatForm.hidden, false);
+        stop();
+        assert.equal(elements.loungeChatForm.hidden, true);
+        view.update(connected([]));
+        assert.equal(elements.loungeChatForm.hidden, true);
+    }
+});
+
+test("finishing a send does not steal focus from another control or reopen a hidden Lounge", async () => {
+    for (const hidden of [false, true]) {
+        let finish;
+        const { view, elements, doc } = harness({ api: () => new Promise((resolve) => { finish = resolve; }) });
+        view.update(connected([]));
+        elements.loungeChatOpen.dispatch("click");
+        elements.loungeChatInput.value = "Hello";
+        elements.loungeChatInput.dispatch("keydown", { key: "Enter" });
+        elements.loungeView.hidden = hidden;
+        if (!hidden) elements.loungeUrl.focus();
+        finish({});
+        await flush();
+        assert.equal(elements.loungeChatForm.hidden, true);
+        assert.notEqual(doc.activeElement, elements.loungeRoom);
+    }
+});
+
+test("chat bubbles use compact text, padding and line spacing", () => {
+    const { view, elements, clock } = harness();
+    view.update(connected([{ id: "2", login: "pal", buddy: {}, x: 1640, y: 770,
+        chat: { text: "x".repeat(40), expiresAt: clock.t + 6000 } }]));
+    const bubble = elements.loungeChatLayer.children[0];
+    assert.match(bubble.innerHTML, /<rect[^>]*width="191" height="38" rx="6"/);
+    assert.match(css, /\.lounge-chat-bubble text \{[^}]*font: 10px/);
+    assert.match(css, /\.lounge-room-stage \{[^}]*position: relative/);
+    assert.match(css, /\.lounge-chat \{[^}]*position: absolute/);
+    assert.match(html, /id="loungeChatForm"[^>]*hidden/);
 });
 
 test("chat bubbles escape markup, follow the buddy, replace old messages and expire", () => {
