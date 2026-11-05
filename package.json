@@ -1,6 +1,6 @@
 {
   "name": "byte-buddy",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "A local-first companion powered by your tickets and verified GitHub contributions.",
   "private": true,
   "type": "module",
