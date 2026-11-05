@@ -18,6 +18,10 @@ const publicOfferSdp = (sdp) => sdp.split(/(?=^m=)/m).map((section) => {
         .replace(/^(a=ssrc:[0-9]+ (?:mslabel|label):)[^\r\n]*/gm, "$1" + trackId);
 }).join("");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Delays between background cleanup passes after the immediate attempts fail.
+const CLEANUP_RETRY_MS = [2_000, 10_000, 30_000, 60_000];
+// The SFU answers HTTP 410 (session_error) once a session's PeerConnection has closed: none of its tracks can carry media.
+const sessionGone = (response) => response.status === 410;
 const ICE_URLS = new Set([
     "stun:stun.cloudflare.com:3478",
     "turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:443?transport=udp",
@@ -41,7 +45,8 @@ function diagnostic(operation, reason, response = {}) {
     }));
 }
 
-export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, timeoutMs = 8_000 }) {
+export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, timeoutMs = 8_000,
+    cleanupRetryMs = CLEANUP_RETRY_MS }) {
     const voices = new Map();
     const resources = new Set();
     const tasks = new Set();
@@ -49,7 +54,6 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
     const configured = ["CF_REALTIME_APP_ID", "CF_REALTIME_APP_SECRET", "CF_TURN_KEY_ID", "CF_TURN_API_TOKEN"]
         .every((key) => typeof env[key] === "string" && env[key].trim());
     let stopped = false;
-    let blocked = false;
     const fail = (status, code, message) => new ErrorType(status, code, message);
     const upstreamError = () => fail(502, "voice_upstream", "The voice service could not complete signaling. Leave voice and retry.");
     const staleError = () => fail(409, "voice_stale", "Voice changed or ended. Leave voice and retry.");
@@ -85,6 +89,7 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
             reason = "invalid_json";
             const result = { ok: response.ok, status, body: text ? JSON.parse(text) : {} };
             if (!result.body || typeof result.body !== "object" || Array.isArray(result.body)) diagnostic(operation, "invalid_response", result);
+            else if (sessionGone(result) && ["tracks_close", "session_inspect"].includes(operation)) return result;
             else if (!result.ok || result.body.errorCode) diagnostic(operation, "request_error", result);
             else if (Array.isArray(result.body.tracks) && result.body.tracks.some((track) =>
                 track?.errorCode && !(operation === "tracks_close" && track.errorCode === "close_track_error"))) diagnostic(operation, "item_error", result);
@@ -174,57 +179,71 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
         for (const mid of sdpMids(body?.sessionDescription)) resource.mids.add(mid);
     }
 
+    // Resolves true once the SFU confirms that none of the resource's tracks remain open; throws otherwise.
+    async function closeTracks(resource) {
+        if (!resource.sessionId) return true;
+        if (resource.uncertain) {
+            const inspected = await api(resourcePath(resource), undefined, "GET");
+            if (sessionGone(inspected)) { resource.mids.clear(); return true; }
+            if (!success(inspected)) throw upstreamError();
+            noteMids(resource, inspected.body);
+        }
+        const mids = [...resource.mids];
+        if (!mids.length) return true;
+        const result = await api(resourcePath(resource) + "/tracks/close", {
+            force: true, tracks: mids.map((mid) => ({ mid })),
+        }, "PUT");
+        if (sessionGone(result)) { resource.mids.clear(); return true; }
+        if (!success(result) || !Array.isArray(result.body.tracks) ||
+            result.body.tracks.some((track) => !track || typeof track !== "object" || Array.isArray(track))) {
+            if (success(result)) diagnostic("tracks_close", "invalid_response", result);
+            throw upstreamError();
+        }
+        for (const mid of mids) {
+            const item = result.body.tracks.find((track) => track.mid === mid);
+            if (item && (!item.errorCode || item.errorCode === "close_track_error")) resource.mids.delete(mid);
+        }
+        if (resource.mids.size) {
+            diagnostic("tracks_close", "incomplete_close_result", result);
+            throw upstreamError();
+        }
+        return true;
+    }
+
+    // An unconfirmed close never re-enables the affected voices: compromise() has already revoked the listener and
+    // every source publisher, so their clients drop the PeerConnections on their next request. The SFU is then
+    // asked again in the background instead of disabling voice for everyone until the process restarts.
+    function scheduleRetry(resource) {
+        const attempt = resource.retries = (resource.retries ?? 0) + 1;
+        const delay = cleanupRetryMs[attempt - 1];
+        const details = JSON.stringify({ role: resource.role, attempt, uncertainAllocation: resource.uncertain,
+            remainingTracks: resource.mids.size });
+        if (stopped || delay === undefined) {
+            resources.delete(resource);
+            console.error("lounge: voice cleanup unconfirmed; giving up", details);
+            return;
+        }
+        console.error("lounge: voice cleanup unconfirmed; retrying", details);
+        resource.retryTimer = setTimeout(() => { resource.retryTimer = null; void retire(resource); }, delay);
+        resource.retryTimer.unref?.();
+    }
+
     function retire(resource) {
         resource.retired = true;
         if (resource.cleanup) return resource.cleanup;
+        clearTimeout(resource.retryTimer);
+        resource.retryTimer = null;
         resource.cleanup = trackTask((async () => {
-            let confirmed = !resource.uncertain;
-            for (let attempt = 0; attempt < 3; attempt++) {
-                if (!resource.sessionId) break;
-                try {
-                    if (resource.uncertain) {
-                        const inspected = await api(resourcePath(resource), undefined, "GET");
-                        if (!success(inspected)) throw upstreamError();
-                        noteMids(resource, inspected.body);
-                    }
-                    const mids = [...resource.mids];
-                    if (!mids.length) {
-                        if (resource.uncertain && attempt < 2) { await sleep(50 * (attempt + 1)); continue; }
-                        break;
-                    }
-                    const result = await api(resourcePath(resource) + "/tracks/close", {
-                        force: true, tracks: mids.map((mid) => ({ mid })),
-                    }, "PUT");
-                    if (!success(result) || !Array.isArray(result.body.tracks) ||
-                        result.body.tracks.some((track) => !track || typeof track !== "object" || Array.isArray(track))) {
-                        if (success(result)) diagnostic("tracks_close", "invalid_response", result);
-                        throw upstreamError();
-                    }
-                    for (const mid of mids) {
-                        const item = result.body.tracks.find((track) => track.mid === mid);
-                        if (item && (!item.errorCode || item.errorCode === "close_track_error")) resource.mids.delete(mid);
-                    }
-                    if (resource.mids.size) {
-                        diagnostic("tracks_close", "incomplete_close_result", result);
-                        throw upstreamError();
-                    }
-                    confirmed = !resource.uncertain;
-                    break;
-                } catch {
-                    compromise(resource);
-                    if (attempt < 2) await sleep(50 * (attempt + 1));
-                }
+            let closed = false;
+            for (let attempt = 0; attempt < 3 && !closed; attempt++) {
+                if (attempt) await sleep(50 * attempt);
+                try { closed = await closeTracks(resource); }
+                catch { compromise(resource); }
             }
-            if (!resource.inFlight && (!confirmed || resource.mids.size)) {
-                blocked = true;
-                compromise(resource);
-                for (const voice of [...voices.values()]) invalidate(voice);
-                console.error("lounge: voice cleanup unconfirmed; voice disabled until server restart", JSON.stringify({
-                    role: resource.role, uncertainAllocation: resource.uncertain, remainingTracks: resource.mids.size,
-                }));
-            } else if (!resource.inFlight) {
-                resources.delete(resource);
-            }
+            // allocate() retires the resource again once its request settles.
+            if (resource.inFlight) return;
+            if (closed) resources.delete(resource);
+            else scheduleRetry(resource);
         })()).finally(() => { resource.cleanup = null; });
         return resource.cleanup;
     }
@@ -307,7 +326,6 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
             await reconcile(session.org);
             await Promise.all([...resources].filter((resource) => previous.has(resource.voice)).map(retire));
             ensureActive(voice);
-            if (blocked) throw fail(503, "voice_unavailable", "Voice cleanup could not be confirmed. The service requires operator attention.");
             const result = await api("/turn/keys/" + encodeURIComponent(env.CF_TURN_KEY_ID) + "/credentials/generate-ice-servers",
                 { ttl: 3600 }, "POST", true);
             if (!success(result) || !Array.isArray(result.body.iceServers)) throw upstreamError();
@@ -347,11 +365,9 @@ export function createVoiceService({ env, fetchImpl, rooms, staleMs, ErrorType, 
             if (voice) invalidate(voice);
             await reconcile(session.org);
             await Promise.all([...resources].filter((resource) => resource.voice === voice).map(retire));
-            if (blocked) throw fail(503, "voice_unavailable", "Voice cleanup could not be confirmed. The service requires operator attention.");
             return {};
         }
         rateLimit({ id: member.id, org: session.org }, body.action);
-        if (blocked) throw fail(503, "voice_unavailable", "Voice cleanup could not be confirmed. Voice is disabled until the service is restarted.");
         if (body.action === "join") return join(session, member);
         if (!voice || voice.member !== member || voice.sessionId !== session.sessionId) throw staleError();
         ensureActive(voice);

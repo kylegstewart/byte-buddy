@@ -330,18 +330,53 @@ test("close retries invalidate voice and its source publishers; item failures ca
     assert.equal(cf.live(), 0);
 });
 
-test("exhausted cleanup disables new voice, retains unresolved work, and keeps errors generic", async (context) => {
-    const { add, join, publish, signal, cf } = fixture(context);
+test("failed cleanup keeps voice available, retries in the background, and keeps errors generic", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const { add, join, publish, signal, cf } = fixture(context, { cleanupRetryMs: [100] });
     const person = add(1); await join(person); await publish(person);
     cf.override((call) => call.url.endsWith("/tracks/close") ? response({ errorCode: "private", errorDescription: "app-secret private-sdp" }, 503) : undefined);
-    await assert.rejects(signal(person, "leave"), (error) => {
-        assert.equal(error.code, "voice_unavailable");
-        assert.doesNotMatch(error.message, /app-secret|private-sdp/);
-        return true;
-    });
+    assert.deepEqual(await signal(person, "leave"), {});
     assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).length, 3);
-    await assert.rejects(join(person), { status: 503, code: "voice_unavailable" });
+    assert.equal(cf.live(), 1);
+    const warning = logger.mock.calls.find((call) => call.arguments[0] === "lounge: voice cleanup unconfirmed; retrying");
+    assert.deepEqual(JSON.parse(warning.arguments[1]), { role: "publisher", attempt: 1, uncertainAllocation: false, remainingTracks: 1 });
+    await join(person);
     cf.override(undefined);
+    const deadline = Date.now() + 1000;
+    while (cf.live() && Date.now() < deadline) await delay(5);
+    assert.equal(cf.live(), 0);
+    assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).length, 4);
+    assert.doesNotMatch(JSON.stringify(logger.mock.calls.map((call) => call.arguments)), /app-secret|private-sdp/);
+});
+
+test("cleanup gives up after the retry schedule without disabling voice", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const { add, join, publish, signal, cf } = fixture(context, { cleanupRetryMs: [5] });
+    const person = add(1); await join(person); await publish(person);
+    cf.override((call) => call.url.endsWith("/tracks/close") ? response({ errorCode: "internal_error" }, 500) : undefined);
+    await signal(person, "leave");
+    const deadline = Date.now() + 1000;
+    const gaveUp = () => logger.mock.calls.find((call) => call.arguments[0] === "lounge: voice cleanup unconfirmed; giving up");
+    while (!gaveUp() && Date.now() < deadline) await delay(5);
+    assert.deepEqual(JSON.parse(gaveUp().arguments[1]), { role: "publisher", attempt: 2, uncertainAllocation: false, remainingTracks: 1 });
+    assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).length, 6);
+    await join(person);
+    cf.override(undefined);
+    await publish(person);
+});
+
+test("a session the SFU reports gone counts as closed without diagnostics or retries", async (context) => {
+    const logger = context.mock.method(console, "error", () => {});
+    const { add, join, publish, signal, cf } = fixture(context);
+    const person = add(1); await join(person); await publish(person);
+    cf.override((call) => call.url.endsWith("/tracks/close") ?
+        response({ errorCode: "session_error", errorDescription: "PeerConnection closed" }, 410) : undefined);
+    assert.deepEqual(await signal(person, "leave"), {});
+    assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).length, 1);
+    assert.equal(logger.mock.calls.length, 0);
+    cf.override(undefined);
+    await join(person);
+    await publish(person);
 });
 
 test("upstream diagnostics log only allowlisted public codes, operation and HTTP status", async (context) => {
@@ -382,7 +417,7 @@ test("upstream diagnostics distinguish timeouts, network errors and unreadable r
     assert.doesNotMatch(JSON.stringify(logger.mock.calls.map((call) => call.arguments)), /app-secret|private-sdp/);
 });
 
-test("malformed allocation results are diagnosed before the conservative cleanup lockout", async (context) => {
+test("malformed allocation results are diagnosed, inspected, and closed without disabling voice", async (context) => {
     const logger = context.mock.method(console, "error", () => {});
     const { add, join, publish, cf } = fixture(context);
     const person = add(1);
@@ -392,10 +427,12 @@ test("malformed allocation results are diagnosed before the conservative cleanup
     assert.deepEqual(JSON.parse(logger.mock.calls[0].arguments[1]), {
         operation: "tracks_new", reason: "invalid_response", status: 200,
     });
-    const warning = logger.mock.calls.find((call) => call.arguments[0].includes("cleanup unconfirmed"));
-    assert.deepEqual(JSON.parse(warning.arguments[1]), { role: "publisher", uncertainAllocation: true, remainingTracks: 0 });
-    await assert.rejects(join(person), { status: 503, code: "voice_unavailable" });
+    assert.equal(cf.calls.filter((call) => call.method === "GET").length, 1);
+    assert.ok(cf.calls.some((call) => call.url.endsWith("/tracks/close")));
+    assert.ok(!logger.mock.calls.some((call) => call.arguments[0].includes("cleanup unconfirmed")));
     cf.override(undefined);
+    await join(person);
+    await publish(person);
 });
 
 test("cleanup diagnostics identify failed or malformed close results without exposing resource identifiers", async (context) => {
@@ -415,16 +452,16 @@ test("cleanup diagnostics identify failed or malformed close results without exp
         await join(person);
         await publish(person);
         cf.override((call) => call.url.endsWith("/tracks/close") ? response(entry.result(call)) : undefined);
-        await assert.rejects(signal(person, "leave"), { status: 503, code: "voice_unavailable" });
+        assert.deepEqual(await signal(person, "leave"), {});
         const calls = logger.mock.calls.slice(start);
         const diagnostics = calls.filter((call) => call.arguments[0] === "lounge: voice diagnostic")
             .map((call) => JSON.parse(call.arguments[1]));
         assert.ok(diagnostics.some((result) => result.operation === "tracks_close" && result.reason === entry.reason && result.status === 200));
         if (entry.reason === "item_error") assert.ok(diagnostics.some((result) => result.errorCodes?.includes("internal_error")));
         const warning = calls.find((call) => call.arguments[0].includes("cleanup unconfirmed"));
-        assert.deepEqual(JSON.parse(warning.arguments[1]), { role: "publisher", uncertainAllocation: false, remainingTracks: 1 });
+        assert.deepEqual(JSON.parse(warning.arguments[1]), { role: "publisher", attempt: 1, uncertainAllocation: false, remainingTracks: 1 });
         assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).length, 3);
-        await assert.rejects(join(person), { code: "voice_unavailable" });
+        await join(person);
         cf.override(undefined);
     }
     assert.doesNotMatch(JSON.stringify(logger.mock.calls.map((call) => call.arguments)),
@@ -570,12 +607,14 @@ test("a receiver retired during session creation never starts a late subscriptio
     assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/new")).length, 1);
 });
 
-test("lost allocation responses are not retried or treated as resolved by an empty snapshot", async (context) => {
+test("lost allocation responses are not retried; cleanup inspects the session and closes what landed", async (context) => {
     const { add, join, publish, signal, cf } = fixture(context);
     const listener = add(1); const publisher = add(2);
     await join(listener); await join(publisher); await publish(publisher);
     cf.override((call) => {
         if (call.url.endsWith("/tracks/new") && call.body.tracks[0].location === "remote") {
+            const sessionId = /\/sessions\/([^/]+)/.exec(call.url)[1];
+            cf.sessions.get(sessionId).set("7", { ...call.body.tracks[0], mid: "7", status: "active" });
             throw new Error("private app-secret SDP response lost");
         }
     });
@@ -585,8 +624,10 @@ test("lost allocation responses are not retried or treated as resolved by an emp
         return true;
     });
     assert.equal(cf.calls.filter((call) => call.url.endsWith("/tracks/new") && call.body.tracks[0].location === "remote").length, 1);
-    assert.equal(cf.calls.filter((call) => call.method === "GET").length, 3);
-    await assert.rejects(join(publisher), { code: "voice_unavailable" });
+    assert.equal(cf.calls.filter((call) => call.method === "GET").length, 1);
+    assert.deepEqual(cf.calls.filter((call) => call.url.endsWith("/tracks/close")).at(-1).body.tracks, [{ mid: "7" }]);
+    assert.equal(cf.live(), 1);
+    await join(publisher);
     assert.equal(cf.live(), 0);
 });
 
